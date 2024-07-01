@@ -1,13 +1,10 @@
 import { useState } from 'react';
-import { Text, ButtonGroup, Button, useText, useAction, useContact } from '@urban-bot/core';
-import fs from 'fs';
-import logo from './assets/logo.png';
+import { Text, ButtonGroup, Button, useText, useAction } from '@urban-bot/core';
+
 import 'whatwg-fetch';
-import { useMixpanel } from 'react-mixpanel-browser';
 import { putOrder } from './actions';
 
-const file = fs.readFileSync(logo);
-const nodemailer = require('nodemailer');
+//const file = fs.readFileSync(logo);
 
 const SUPPORT_IT = 'support@protectfeed.ru';
 const SUPPORT_1C = 'support-1c@feedtech.su';
@@ -26,16 +23,17 @@ const validateEmail = (email) => {
 function Help(props) {
     //const [trouble, setTrouble] = useState('Опишите вашу проблему');
 
-    const [state, setState] = useState('start');
+    //const [state, setState] = useState('start');
     const [messages, setMessages] = useState({
         name: '',
         phone: '',
         trouble: '',
         email: '',
         subject: SUPPORT_IT,
+        state: 'start',
     });
 
-    const mixpanel = useMixpanel();
+    //const mixpanel = useMixpanel();
 
     useAction((actionId) => {
         //console.log('user made some action', actionId);
@@ -44,51 +42,53 @@ function Help(props) {
         //if (mixpanel) mixpanel.track('User Action', { ...actionId.chat });
     });
 
-    useContact((event) => {
-        console.log('user sent a contact', event);
-    });
-
     useText(({ text }) => {
-        switch (state) {
+        switch (messages.state) {
             case 'trouble':
-                setMessages((messages) => ({
+                setMessages({
                     ...messages,
                     trouble: text,
-                }));
-                setState(messages.name.length === 0 ? 'name' : 'confirm name');
+                    state: messages.name.length === 0 ? 'name' : 'confirm name',
+                });
+
                 break;
             case 'name':
-                setMessages((messages) => ({
+                setMessages({
                     ...messages,
                     name: text,
-                }));
-                setState(messages.phone.length === 0 ? 'phone' : 'confirm phone');
+                    state: messages.phone.length === 0 ? 'phone' : 'confirm phone',
+                });
                 break;
             case 'phone':
-                setMessages((messages) => ({
+                setMessages({
                     ...messages,
                     phone: text,
-                }));
-                setState(messages.email.length === 0 ? 'email' : 'confirm email');
+                    state: messages.email.length === 0 ? 'email' : 'confirm email',
+                });
                 break;
             case 'email':
             case 'email error':
             case 'email error again':
-                if (validateEmail(text)) {
-                    setMessages((messages) => ({
+                if (validateEmail(text))
+                    setMessages({
                         ...messages,
                         email: text,
-                    }));
-                    setState('confirm ticket');
-                } else setState(['email', 'email error again'].includes(state) ? 'email error' : 'email error again');
-                break;
-            default:
+                        state: 'confirm ticket',
+                    });
+                else {
+                    setMessages({
+                        ...messages,
+                        state: ['email', 'email error again'].includes(messages.state)
+                            ? 'email error'
+                            : 'email error again',
+                    });
+                }
                 break;
         }
     });
 
     function getOutputText() {
-        switch (state) {
+        switch (messages.state) {
             case 'start':
                 return '';
             case 'trouble':
@@ -101,7 +101,7 @@ function Help(props) {
                 return 'Укажите электронную почту для автоматических уведомлений, на нее будет направлена копия обращения';
             case 'email error':
             case 'email error again':
-                return 'Извините, это не похоже на валидный e-mail, пожалуйста, введите еще раз';
+                return 'Извините, это не похоже на правильный e-mail, пожалуйста, введите еще раз';
             case 'yes':
                 return 'Обращение успешно создано, на указанную электронную почту поступит информация по мере решения проблемы';
             case 'no':
@@ -126,74 +126,72 @@ function Help(props) {
             consumer_secret: props.CONSUMER_SECRET,
         };
         putOrder(ticket);
-        setState('yes');
+        setMessages({ ...messages, state: 'yes' });
     }
 
     function startTicket() {
-        setState('subject');
+        setMessages({ ...messages, state: 'subject' });
     }
 
-    console.log('App states', state, messages);
+    function setSubject(code) {
+        setMessages({ ...messages, subject: code, state: 'trouble' });
+    }
+
+    console.log('App states', messages);
     //mixpanel.track('App States', state, messages);
 
     return (
         <>
-            {!['start', 'subject', 'confirm name', 'confirm phone', 'confirm email'].includes(state) && (
+            {!['start', 'subject', 'confirm name', 'confirm phone', 'confirm email'].includes(messages.state) && (
                 <Text>{getOutputText()}</Text>
             )}
 
-            {['start', 'yes', 'no'].includes(state) && (
+            {['start', 'yes', 'no'].includes(messages.state) && (
                 <ButtonGroup title="Чтобы оставить обращение в службу технической поддержки, нажмите на кнопку ниже">
                     <Button onClick={startTicket}>Создать обращение</Button>
                 </ButtonGroup>
             )}
 
-            {state === 'subject' && (
+            {messages.state === 'subject' && (
                 <ButtonGroup title="Выберите предмет обращения" maxColumns={1}>
                     <Button
                         onClick={() => {
-                            setMessages({ ...messages, subject: SUPPORT_1C });
-                            setState('trouble');
+                            setSubject(SUPPORT_1C);
                         }}
                     >
                         1С БП, ЗУП, УНФ, ERP
                     </Button>
                     <Button
                         onClick={() => {
-                            setMessages({ ...messages, subject: SUPPORT_EVENTS });
-                            setState('trouble');
+                            setSubject(SUPPORT_EVENTS);
                         }}
                     >
                         CRM, сайты и лендинги
                     </Button>
                     <Button
                         onClick={() => {
-                            setMessages({ ...messages, subject: SUPPORT_EFEED });
-                            setState('trouble');
+                            setSubject(SUPPORT_EFEED);
                         }}
                     >
                         e-Feed Маркетплейс
                     </Button>
                     <Button
                         onClick={() => {
-                            setMessages({ ...messages, subject: SUPPORT_EFEED });
-                            setState('trouble');
+                            setSubject(SUPPORT_EFEED);
                         }}
                     >
                         e-Feed Взвешивание
                     </Button>
                     <Button
                         onClick={() => {
-                            setMessages({ ...messages, subject: SUPPORT_SERVICE });
-                            setState('trouble');
+                            setSubject(SUPPORT_SERVICE);
                         }}
                     >
                         e-Feed Сервис
                     </Button>
                     <Button
                         onClick={() => {
-                            setMessages({ ...messages, subject: SUPPORT_IT });
-                            setState('trouble');
+                            setSubject(SUPPORT_IT);
                         }}
                     >
                         Рабочие места или другое
@@ -201,33 +199,94 @@ function Help(props) {
                 </ButtonGroup>
             )}
 
-            {state === 'confirm name' && (
+            {messages.state === 'confirm name' && (
                 <ButtonGroup title={messages.name + ', обращение зарегистрировать от вас или другого человека?'}>
-                    <Button onClick={() => setState(messages.phone.length ? 'confirm phone' : 'phone')}>
+                    <Button
+                        onClick={() =>
+                            setMessages({
+                                ...messages,
+                                state: messages.phone.length ? 'confirm phone' : 'phone',
+                            })
+                        }
+                    >
                         Да, от меня
                     </Button>
-                    <Button onClick={() => setState('name')}>Нет, другое ФИО</Button>
+                    <Button
+                        onClick={() =>
+                            setMessages({
+                                ...messages,
+                                state: 'name',
+                            })
+                        }
+                    >
+                        Нет, другое ФИО
+                    </Button>
                 </ButtonGroup>
             )}
 
-            {state === 'confirm phone' && (
+            {messages.state === 'confirm phone' && (
                 <ButtonGroup title={'Использовать этот номер телефона для связи ' + messages.phone + '?'}>
-                    <Button onClick={() => setState(messages.phone.length ? 'confirm email' : 'email')}>Да</Button>
-                    <Button onClick={() => setState('phone')}>Нет, укажу другой</Button>
+                    <Button
+                        onClick={() =>
+                            setMessages({
+                                ...messages,
+                                state: messages.phone.length ? 'confirm email' : 'email',
+                            })
+                        }
+                    >
+                        Да
+                    </Button>
+                    <Button
+                        onClick={() =>
+                            setMessages({
+                                ...messages,
+                                state: 'phone',
+                            })
+                        }
+                    >
+                        Нет, укажу другой
+                    </Button>
                 </ButtonGroup>
             )}
 
-            {state === 'confirm email' && (
+            {messages.state === 'confirm email' && (
                 <ButtonGroup title={'Использовать эту электронную почту для связи ' + messages.email + '?'}>
-                    <Button onClick={() => setState('confirm ticket')}>Да</Button>
-                    <Button onClick={() => setState('email')}>Нет, укажу другую</Button>
+                    <Button
+                        onClick={() =>
+                            setMessages({
+                                ...messages,
+                                state: 'confirm ticket',
+                            })
+                        }
+                    >
+                        Да
+                    </Button>
+                    <Button
+                        onClick={() =>
+                            setMessages({
+                                ...messages,
+                                state: 'email',
+                            })
+                        }
+                    >
+                        Нет, укажу другую
+                    </Button>
                 </ButtonGroup>
             )}
 
-            {state === 'confirm ticket' && (
+            {messages.state === 'confirm ticket' && (
                 <ButtonGroup title="Создать обращение?">
                     <Button onClick={createTicket}>Да, пожалуйста</Button>
-                    <Button onClick={() => setState('no')}>Нет</Button>
+                    <Button
+                        onClick={() =>
+                            setMessages({
+                                ...messages,
+                                state: 'no',
+                            })
+                        }
+                    >
+                        Нет
+                    </Button>
                 </ButtonGroup>
             )}
         </>
