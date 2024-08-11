@@ -19,3 +19,17 @@ export const putOrder = (orderData) => {
             console.error('Ошибка запроса: ' + String(ex));
         });
 };
+
+export const trackData = (formData) => {
+    const url = 'https://stage.e-feed.ru/wp-json/app/v1/track-data/';
+
+    return fetch(url, { method: 'post', body: formData })
+        .then((response) => response.json())
+        .then((json) => {
+            console.log('track data responce', json);
+            if (json.code !== 200) console.warn(' error while track data', url, formData, json);
+        })
+        .catch((ex) => {
+            console.error('Ошибка запроса: ' + String(ex));
+        });
+};
