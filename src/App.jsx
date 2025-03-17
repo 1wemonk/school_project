@@ -1,294 +1,583 @@
-import { useState } from 'react';
-import { Text, ButtonGroup, Button, useText, useAction } from '@urban-bot/core';
-
+import { useState, useEffect } from 'react';
+import { Button, ButtonGroup, Text, useBotContext, useCommand, useText, useVoice } from '@urban-bot/core';
+import OpenAI from 'openai';
+import fs, { createReadStream, existsSync } from 'fs';
 import 'whatwg-fetch';
-import { putOrder } from './actions';
+import { ogg } from './ogg';
+import { removeFile } from './utils';
+import db from './db'; // Импортируем базу данных
 
-//const file = fs.readFileSync(logo);
-
-const SUPPORT_IT = 'support@protectfeed.ru';
-const SUPPORT_1C = 'support-1c@feedtech.su';
-const SUPPORT_EFEED = 'support-marketplace@e-feed.ru';
-const SUPPORT_SERVICE = 'support-service@e-feed.ru';
-const SUPPORT_EVENTS = 'support-events@e-feed.ru';
-
-const validateEmail = (email) => {
-    return String(email)
-        .toLowerCase()
-        .match(
-            /^(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|.(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/,
-        );
-};
-
-function Help(props) {
-    //const [trouble, setTrouble] = useState('Опишите вашу проблему');
-
-    //const [state, setState] = useState('start');
-    const [messages, setMessages] = useState({
-        name: '',
-        phone: '',
-        trouble: '',
-        email: '',
-        subject: SUPPORT_IT,
-        state: 'start',
+function Bot(props) {
+    const { chat } = useBotContext();
+    const [state, setState] = useState('start');
+    const [text, setText] = useState('');
+    const [response, setResponse] = useState('');
+    const [loading, setLoading] = useState(false);
+    const [messages, setMessages] = useState([]); // Хранение истории сообщений
+    const [day, setDay] = useState('');
+    // Инициализация расписания из базы данных
+    const [schedule, setSchedule] = useState({
+        monday: [],
+        tuesday: [],
+        wednesday: [],
+        thursday: [],
+        friday: [],
+        saturday: [],
     });
 
-    //const mixpanel = useMixpanel();
+    const loadSchedule = () => {
+        db.all(`SELECT day, subjects FROM schedule WHERE chat_id = ?`, [chat.id], (err, rows) => {
+            if (err) {
+                console.error(err.message);
+                return;
+            }
+            const loadedSchedule = {};
+            rows.forEach((row) => {
+                loadedSchedule[row.day] = JSON.parse(row.subjects);
+            });
+            setSchedule(loadedSchedule);
+        });
+    };
 
-    useAction((actionId) => {
-        //console.log('user made some action', actionId);
-        if (messages.name.length === 0)
-            setMessages({ ...messages, name: actionId.from.firstName + ' ' + actionId.from.lastName });
-        //if (mixpanel) mixpanel.track('User Action', { ...actionId.chat });
-    });
-
-    useText(({ text }) => {
-        switch (messages.state) {
-            case 'trouble':
-                setMessages({
-                    ...messages,
-                    trouble: text,
-                    state: messages.name.length === 0 ? 'name' : 'confirm name',
-                });
-
-                break;
-            case 'name':
-                setMessages({
-                    ...messages,
-                    name: text,
-                    state: messages.phone.length === 0 ? 'phone' : 'confirm phone',
-                });
-                break;
-            case 'phone':
-                setMessages({
-                    ...messages,
-                    phone: text,
-                    state: messages.email.length === 0 ? 'email' : 'confirm email',
-                });
-                break;
-            case 'email':
-            case 'email error':
-            case 'email error again':
-                if (validateEmail(text))
-                    setMessages({
-                        ...messages,
-                        email: text,
-                        state: 'confirm ticket',
-                    });
-                else {
-                    setMessages({
-                        ...messages,
-                        state: ['email', 'email error again'].includes(messages.state)
-                            ? 'email error'
-                            : 'email error again',
-                    });
+    const saveSchedule = (day, subjects) => {
+        const subjectsString = JSON.stringify(subjects);
+        db.run(
+            `INSERT INTO schedule (chat_id, day, subjects)
+        VALUES (?, ?, ?) 
+        ON CONFLICT(chat_id, day) 
+        DO UPDATE SET subjects = excluded.subjects`,
+            [chat.id, day, subjectsString],
+            (err) => {
+                if (err) {
+                    console.error(err.message);
+                    return;
                 }
-                break;
+                console.log(`Расписание для ${chat.id} на ${day} сохранено.`);
+            },
+        );
+    };
+
+    // Загружаем расписание при старте
+    useEffect(() => {
+        loadSchedule();
+    }, [chat.id]);
+
+    useCommand(({ command }) => {
+        if (command === '/start') {
+            setState('start');
+            setText(
+                `👋 Привет, ${chat.firstName}! Я твой виртуальный помощник по обучению. Готов помочь тебе с любыми вопросами, связанными со школой! 📚`,
+            );
+            setResponse(''); // Очищаем предыдущий ответ
+            setMessages([]); // Очищаем историю при запуске
+            setState('menu');
+        }
+        if (command === '/addschedule') {
+            setState('addSchedule');
+            setText('Отлично! Давай добавим твое расписание\nНажми на кнопку чтобы выбрать учебный день.');
+        }
+        if (command === '/viewschedule') {
+            setState('viewSchedule');
+            setText('Выбери день недели, чтобы просмотреть расписание:');
+        }
+        if (command === '/editschedule') {
+            setState('editSchedule');
+            setText('Выбери день недели, чтобы изменить расписание:');
+        }
+
+        if (command === '/menu') {
+            setState('menu');
         }
     });
 
-    function getOutputText() {
-        switch (messages.state) {
-            case 'start':
-                return '';
-            case 'trouble':
-                return 'Пожалуйста, опишите вашу проблему или что нужно сделать';
-            case 'name':
-                return 'Введите имя и фамилию, к кому обратиться';
-            case 'phone':
-                return 'Укажите номер телефона, по которому с вами можно будет связаться';
-            case 'email':
-                return 'Укажите электронную почту для автоматических уведомлений, на нее будет направлена копия обращения';
-            case 'email error':
-            case 'email error again':
-                return 'Извините, это не похоже на правильный e-mail, пожалуйста, введите еще раз';
-            case 'yes':
-                return 'Обращение успешно создано, на указанную электронную почту поступит информация по мере решения проблемы';
-            case 'no':
-                return 'Хорошо, если понадобится, обращайтесь';
-            case 'confirm ticket':
-                return `Проблема: ${messages.trouble}, имя: ${messages.name}, номер телефона: ${messages.phone}, эл. почта: ${messages.email}`;
-            default:
-                return '';
+    function formatForTelegram(text) {
+        return text
+            .replace(/###/g, '▎ ')
+            .replace(/```([\s\S]*?)```/g, '<pre>$1</pre>')
+            .replace(/`(.+?)`/g, '<code>$1</code>')
+            .replace(/_(.+?)_/g, '<i>$1</i>')
+            .replace(/~(.+?)~/g, '<s>$1</s>')
+            .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+            .replace(/(^|\n)(\d+)\. /g, '$1<strong>$2.</strong> ')
+            .replace(/(^|\n)(- )/g, '$1• ')
+            .replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2">$1</a>');
+    }
+
+    useText(async ({ text }) => {
+        if (!text.trim() || loading) return;
+
+        if (
+            state !== 'monday' &&
+            state !== 'tuesday' &&
+            state !== 'wednesday' &&
+            state !== 'thursday' &&
+            state !== 'friday' &&
+            state !== 'saturday' &&
+            state !== 'editShedDay'
+        ) {
+            setState('dialog');
+            setLoading(true);
+            setMessages((prevMessages) => [...prevMessages, { role: 'user', content: text }]);
+            console.log(`пользователь ${chat.firstName} отправил сообщение ${text}`);
+            try {
+                const openai = new OpenAI({
+                    apiKey: process.env.OPENAI_API_KEY,
+                });
+                const filteredMessages = [...messages, { role: 'user', content: text }];
+                const completion = await openai.chat.completions.create({
+                    model: 'gpt-4o-mini',
+                    messages: filteredMessages,
+                });
+                const aiResponse = completion.choices[0].message.content;
+                setMessages((prevMessages) => [...prevMessages, { role: 'assistant', content: aiResponse }]);
+                setResponse(formatForTelegram(aiResponse));
+            } catch (error) {
+                console.error('Ошибка при запросе к OpenAI:', error);
+                setResponse(`❌ К сожалению, в данный момент бот временно не работает.`);
+            } finally {
+                setLoading(false);
+            }
+        } else {
+            if (state === 'editShedDay') {
+                setState('');
+                const subjects = scheduleMaker(text);
+                setSchedule((prevSchedule) => ({
+                    ...prevSchedule,
+                    [day]: subjects,
+                }));
+                setText(`Отлично! Расписание для ${capitalizeFirstLetter(day)} изменено`);
+                saveSchedule(day, subjects);
+                setState('menu');
+            } else {
+                setState('');
+                const subjects = scheduleMaker(text);
+                const formattedSchedule = formatSchedule(subjects, day);
+                setSchedule((prevSchedule) => ({
+                    ...prevSchedule,
+                    [day]: subjects,
+                }));
+                saveSchedule(day, subjects); // Сохраняем расписание в базу данных
+                setText(formattedSchedule);
+                setState('menu'); // Переходим в меню после ввода расписания
+            }
+        }
+    });
+
+    // console.log(schedule, 'shed');
+
+    async function transcription(filepath) {
+        try {
+            if (!existsSync(filepath)) {
+                console.error('Файл для транскрипции не найден.');
+            }
+            console.log('Используемый API-ключ:', process.env.OPENAI_API_KEY, 'filepath API');
+            console.log('Отправляю файл в OpenAI:', filepath, 'filepath');
+            const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+            const response = await openai.audio.transcriptions.create({
+                file: fs.createReadStream(filepath),
+                model: 'whisper-1',
+                response_format: 'text',
+            });
+            console.log('Ответ OpenAI:', response, 'filepath');
+            if (!response.text) {
+                console.error('OpenAI вернул пустой текст.', 'filepath');
+            }
+            return response.text;
+        } catch (e) {
+            console.error('Ошибка при транскрипции:', e.message, 'filepath');
+            return null;
         }
     }
 
-    function createTicket() {
-        let now = new Date();
-        const ticket = {
-            subject: 'Обращение через TG бот от ' + messages.name + ' ' + now,
-            message: messages.trouble,
-            email: messages.email,
-            phone: messages.phone,
-            who: messages.name,
-            to: messages.subject,
-            consumer_key: props.CONSUMER_KEY,
-            consumer_secret: props.CONSUMER_SECRET,
-        };
-        putOrder(ticket);
-        setMessages({ ...messages, state: 'yes' });
+    async function Chat(messages) {
+        try {
+            setText(`Отправляю сообщения в OpenAI: ${messages}`);
+            const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+            const completion = await openai.chat.completions.create({
+                model: 'gpt-4o-mini',
+                messages: messages,
+            });
+            return completion.choices[0].message.content;
+        } catch (error) {
+            setText(`Ошибка при запросе к OpenAI: ${error}`);
+            return '❌ Ошибка при получении ответа.';
+        }
     }
 
-    function startTicket() {
-        setMessages({ ...messages, state: 'subject' });
-    }
+    useVoice(async (payload) => {
+        setState('voice');
+        setLoading(true);
+        setText('обрабатываю войс...');
+        const fileId = payload.nativeEvent.payload.voice.file_id;
+        try {
+            const response = await fetch(
+                `https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/getFile?file_id=${fileId}`,
+            );
+            const data = await response.json();
+            if (data.ok) {
+                const filePath = data.result.file_path;
+                const fileUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${filePath}`;
+                const oggPath = await ogg.create(fileUrl, payload.chat.id);
+                const mp3Path = await ogg.toMp3(oggPath, payload.chat.id);
+                await removeFile(oggPath);
+                const text = await transcription(mp3Path);
+                setResponse(text);
+                if (!text) {
+                    setText(
+                        `❌ К сожалению, в данный момент функция распознавания речи временно недоступна. Пожалуйста, попробуйте позже или воспользуйтесь альтернативными способами ввода текста.`,
+                    );
+                    return;
+                }
+                const msgs = [...messages, { role: 'user', content: text }];
+                const response = await Chat(msgs);
+                setResponse(response);
+                await removeFile(mp3Path);
+            } else {
+                setText(`❌ Ошибка при получении ссылки на голосовое сообщение.`);
+            }
+        } catch (error) {
+            console.error('Ошибка при обработке голосового сообщения:', error);
+            setText(`❌ Ошибка при получении голосового сообщения.`);
+        } finally {
+            setLoading(false);
+        }
+    });
 
-    function setSubject(code) {
-        setMessages({ ...messages, subject: code, state: 'trouble' });
-    }
+    const scheduleMaker = (text) => {
+        const subjects = text.split(',').map((subject) => subject.trim());
+        return subjects;
+    };
 
-    console.log('App states', messages);
-    //mixpanel.track('App States', state, messages);
+    const formatSchedule = (subjects, day) => {
+        const formattedSubjects = subjects.map((subject, index) => `${index + 1}. ${subject}`).join('\n');
+        return `Расписание на ${capitalizeFirstLetter(day)}:\n${formattedSubjects}`;
+    };
+
+    const capitalizeFirstLetter = (string) => {
+        let day;
+
+        switch (string) {
+            case 'monday':
+                day = 'понедельник';
+                break;
+            case 'tuesday':
+                day = 'вторник';
+                break;
+            case 'wednesday':
+                day = 'среда';
+                break;
+            case 'thursday':
+                day = 'четверг';
+                break;
+            case 'friday':
+                day = 'пятница';
+                break;
+            case 'saturday':
+                day = 'суббота';
+                break;
+            default:
+                break;
+        }
+
+        return day.charAt(0).toUpperCase() + day.slice(1);
+    };
+
+    const viewSchedule = (day) => {
+        const subjects = schedule[day];
+        if (!subjects || subjects.length === 0 || subjects === {}) {
+            setState('noShed');
+            setText(`Расписание на ${capitalizeFirstLetter(day)} еще не добавлено.`);
+        } else {
+            setText(formatSchedule(subjects, day));
+            setState('viewShedDay');
+            setTimeout(() => setState('menu'), 3000);
+            // Делаю паузу в 3 секунды и вызываю меню
+        }
+    };
+
+    const editSchedule = (day) => {
+        const subjects = schedule[day];
+        if (!subjects || subjects.length === 0 || subjects === {}) {
+            setState('noShed');
+            setText(`Расписание на ${capitalizeFirstLetter(day)} еще не добавлено.`);
+        } else {
+            setText(`Напиши новое расписание для ${capitalizeFirstLetter(day)}`);
+            setState('editShedDay');
+        }
+    };
 
     return (
         <>
-            {!['start', 'subject', 'confirm name', 'confirm phone', 'confirm email'].includes(messages.state) && (
-                <Text>{getOutputText()}</Text>
+            {/* <Text>{state}</Text> */}
+            {state === 'start' && <Text>{text}</Text>}
+            {state === 'dialog' && !loading && response && (
+                <Text simulateTyping={1000} parseMode={'HTML'}>
+                    {response}
+                </Text>
             )}
-
-            {['start', 'yes', 'no'].includes(messages.state) && (
-                <ButtonGroup title="Чтобы оставить обращение в службу технической поддержки, нажмите на кнопку ниже">
-                    <Button onClick={startTicket}>Создать обращение</Button>
-                </ButtonGroup>
+            {state === 'voice' && <Text simulateTyping={1000}>{response}</Text>}
+            {state === 'voice' && <Text>{text}</Text>}
+            {state === 'addSchedule' && (
+                <>
+                    <ButtonGroup
+                        maxColumns={2}
+                        title={'Отлично! Давай добавим твое расписание\nНажми на кнопку чтобы выбрать учебный день.'}
+                    >
+                        <Button
+                            onClick={() => {
+                                setState('monday');
+                                setDay('monday');
+                                setText(
+                                    'Хорошо, теперь напиши мне свое расписание на Понедельник в формате (Математика, География, История...)',
+                                );
+                            }}
+                        >
+                            Понедельник
+                        </Button>
+                        <Button
+                            onClick={() => {
+                                setState('tuesday');
+                                setDay('tuesday');
+                                setText(
+                                    'Хорошо, теперь напиши мне свое расписание на Вторник в формате (Математика, География, История...)',
+                                );
+                            }}
+                        >
+                            Вторник
+                        </Button>
+                        <Button
+                            onClick={() => {
+                                setState('wednesday');
+                                setDay('wednesday');
+                                setText(
+                                    'Хорошо, теперь напиши мне свое расписание на Среду в формате (Математика, География, История...)',
+                                );
+                            }}
+                        >
+                            Среда
+                        </Button>
+                        <Button
+                            onClick={() => {
+                                setState('thursday');
+                                setDay('thursday');
+                                setText(
+                                    'Хорошо, теперь напиши мне свое расписание на Четверг в формате (Математика, География, История...)',
+                                );
+                            }}
+                        >
+                            Четверг
+                        </Button>
+                        <Button
+                            onClick={() => {
+                                setState('friday');
+                                setDay('friday');
+                                setText(
+                                    'Хорошо, теперь напиши мне свое расписание на Пятницу в формате (Математика, География, История...)',
+                                );
+                            }}
+                        >
+                            Пятница
+                        </Button>
+                        <Button
+                            onClick={() => {
+                                setState('saturday');
+                                setDay('saturday');
+                                setText(
+                                    'Хорошо, теперь напиши мне свое расписание на Субботу в формате (Математика, География, История...)',
+                                );
+                            }}
+                        >
+                            Суббота
+                        </Button>
+                    </ButtonGroup>
+                </>
             )}
-
-            {messages.state === 'subject' && (
-                <ButtonGroup title="Выберите предмет обращения" maxColumns={1}>
+            {state === 'noShed' && <Text>{text}</Text>}
+            {state === 'monday' && (
+                <Text>
+                    Хорошо, теперь напиши мне свое расписание на Понедельник в формате (Предмет 1, Предмет 2, Предмет
+                    3...)
+                </Text>
+            )}
+            {state === 'tuesday' && (
+                <Text>
+                    Хорошо, теперь напиши мне свое расписание на Вторник в формате (Предмет 1, Предмет 2, Предмет 3...)
+                </Text>
+            )}
+            {state === 'wednesday' && (
+                <Text>
+                    Хорошо, теперь напиши мне свое расписание на Среду в формате (Предмет 1, Предмет 2, Предмет 3...)
+                </Text>
+            )}
+            {state === 'thursday' && (
+                <Text>
+                    Хорошо, теперь напиши мне свое расписание на Четверг в формате (Предмет 1, Предмет 2, Предмет 3...)
+                </Text>
+            )}
+            {state === 'friday' && (
+                <Text>
+                    Хорошо, теперь напиши мне свое расписание на Пятницу в формате (Предмет 1, Предмет 2, Предмет 3...)
+                </Text>
+            )}
+            {state === 'saturday' && (
+                <Text>
+                    Хорошо, теперь напиши мне свое расписание на Субботу в формате (Предмет 1, Предмет 2, Предмет 3...)
+                </Text>
+            )}
+            {state === 'menu' && (
+                <ButtonGroup maxColumns={2} title={'Выбери, что ты хочешь сделать\n'}>
                     <Button
                         onClick={() => {
-                            setSubject(SUPPORT_1C);
+                            setState('addSchedule');
                         }}
                     >
-                        1С БП, ЗУП, УНФ, ERP
+                        Добавить расписание
                     </Button>
                     <Button
                         onClick={() => {
-                            setSubject(SUPPORT_EVENTS);
+                            setState('viewSchedule');
                         }}
                     >
-                        CRM, сайты и лендинги
+                        Посмотреть расписание
                     </Button>
                     <Button
                         onClick={() => {
-                            setSubject(SUPPORT_EFEED);
+                            setState('editSchedule');
                         }}
                     >
-                        e-Feed Маркетплейс
+                        Изменить расписание
                     </Button>
                     <Button
                         onClick={() => {
-                            setSubject(SUPPORT_EFEED);
+                            setState('dialog');
                         }}
                     >
-                        e-Feed Взвешивание
-                    </Button>
-                    <Button
-                        onClick={() => {
-                            setSubject(SUPPORT_SERVICE);
-                        }}
-                    >
-                        e-Feed Сервис
-                    </Button>
-                    <Button
-                        onClick={() => {
-                            setSubject(SUPPORT_IT);
-                        }}
-                    >
-                        Рабочие места или другое
+                        Поговорить со мной
                     </Button>
                 </ButtonGroup>
             )}
-
-            {messages.state === 'confirm name' && (
-                <ButtonGroup title={messages.name + ', обращение зарегистрировать от вас или другого человека?'}>
-                    <Button
-                        onClick={() =>
-                            setMessages({
-                                ...messages,
-                                state: messages.phone.length ? 'confirm phone' : 'phone',
-                            })
-                        }
-                    >
-                        Да, от меня
-                    </Button>
-                    <Button
-                        onClick={() =>
-                            setMessages({
-                                ...messages,
-                                state: 'name',
-                            })
-                        }
-                    >
-                        Нет, другое ФИО
-                    </Button>
-                </ButtonGroup>
+            {state === 'viewSchedule' && (
+                <>
+                    <ButtonGroup maxColumns={2} title={'Выбери день недели, чтобы просмотреть расписание\n'}>
+                        <Button
+                            onClick={() => {
+                                setState('');
+                                viewSchedule('monday');
+                                setDay('monday');
+                            }}
+                        >
+                            Понедельник
+                        </Button>
+                        <Button
+                            onClick={() => {
+                                setState('');
+                                viewSchedule('tuesday');
+                                setDay('tuesday');
+                            }}
+                        >
+                            Вторник
+                        </Button>
+                        <Button
+                            onClick={() => {
+                                setState('');
+                                viewSchedule('wednesday');
+                                setDay('wednesday');
+                            }}
+                        >
+                            Среда
+                        </Button>
+                        <Button
+                            onClick={() => {
+                                setState('');
+                                viewSchedule('thursday');
+                                setDay('thursday');
+                            }}
+                        >
+                            Четверг
+                        </Button>
+                        <Button
+                            onClick={() => {
+                                setState('');
+                                viewSchedule('friday');
+                                setDay('friday');
+                            }}
+                        >
+                            Пятница
+                        </Button>
+                        <Button
+                            onClick={() => {
+                                setState('');
+                                viewSchedule('saturday');
+                                setDay('saturday');
+                            }}
+                        >
+                            Суббота
+                        </Button>
+                    </ButtonGroup>
+                </>
             )}
-
-            {messages.state === 'confirm phone' && (
-                <ButtonGroup title={'Использовать этот номер телефона для связи ' + messages.phone + '?'}>
-                    <Button
-                        onClick={() =>
-                            setMessages({
-                                ...messages,
-                                state: messages.phone.length ? 'confirm email' : 'email',
-                            })
-                        }
-                    >
-                        Да
-                    </Button>
-                    <Button
-                        onClick={() =>
-                            setMessages({
-                                ...messages,
-                                state: 'phone',
-                            })
-                        }
-                    >
-                        Нет, укажу другой
-                    </Button>
-                </ButtonGroup>
+            {state === 'editSchedule' && (
+                <>
+                    <ButtonGroup maxColumns={2} title={'Выбери день недели, чтобы изменить расписание\n'}>
+                        <Button
+                            onClick={() => {
+                                setState('');
+                                editSchedule('monday');
+                                setDay('monday');
+                            }}
+                        >
+                            Понедельник
+                        </Button>
+                        <Button
+                            onClick={() => {
+                                setState('');
+                                editSchedule('tuesday');
+                                setDay('tuesday');
+                            }}
+                        >
+                            Вторник
+                        </Button>
+                        <Button
+                            onClick={() => {
+                                setState('');
+                                editSchedule('wednesday');
+                                setDay('wednesday');
+                            }}
+                        >
+                            Среда
+                        </Button>
+                        <Button
+                            onClick={() => {
+                                setState('');
+                                editSchedule('thursday');
+                                setDay('thursday');
+                            }}
+                        >
+                            Четверг
+                        </Button>
+                        <Button
+                            onClick={() => {
+                                setState('');
+                                editSchedule('friday');
+                                setDay('friday');
+                            }}
+                        >
+                            Пятница
+                        </Button>
+                        <Button
+                            onClick={() => {
+                                setState('');
+                                editSchedule('saturday');
+                                setDay('saturday');
+                            }}
+                        >
+                            Суббота
+                        </Button>
+                    </ButtonGroup>
+                </>
             )}
-
-            {messages.state === 'confirm email' && (
-                <ButtonGroup title={'Использовать эту электронную почту для связи ' + messages.email + '?'}>
-                    <Button
-                        onClick={() =>
-                            setMessages({
-                                ...messages,
-                                state: 'confirm ticket',
-                            })
-                        }
-                    >
-                        Да
-                    </Button>
-                    <Button
-                        onClick={() =>
-                            setMessages({
-                                ...messages,
-                                state: 'email',
-                            })
-                        }
-                    >
-                        Нет, укажу другую
-                    </Button>
-                </ButtonGroup>
-            )}
-
-            {messages.state === 'confirm ticket' && (
-                <ButtonGroup title="Создать обращение?">
-                    <Button onClick={createTicket}>Да, пожалуйста</Button>
-                    <Button
-                        onClick={() =>
-                            setMessages({
-                                ...messages,
-                                state: 'no',
-                            })
-                        }
-                    >
-                        Нет
-                    </Button>
-                </ButtonGroup>
-            )}
+            {state === 'viewShedDay' && <Text>{text}</Text>}
+            {state === 'editShedDay' && <Text>{text}</Text>}
         </>
     );
 }
@@ -296,8 +585,7 @@ function Help(props) {
 export function App(props) {
     return (
         <>
-            <Text>Добро пожаловать в чат-бота технической поддержки ООО ФИДТЕХ</Text>
-            <Help {...props} />
+            <Bot {...props} />
         </>
     );
 }
