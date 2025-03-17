@@ -25,9 +25,7 @@ const MIXPANEL_CONFIG = {
 
 render(
     <Root bot={urbanBotTelegram} port={PORT ? Number(PORT) : undefined}>
-        <MixpanelProvider config={MIXPANEL_CONFIG} token={MIXPANEL_API_KEY}>
-            <App {...process.env} />
-        </MixpanelProvider>
+        <App {...process.env} />
     </Root>,
     () => {
         console.log('TG Бот начал свою работу', MIXPANEL_API_KEY);
