@@ -5,9 +5,9 @@ import fs, { createReadStream, existsSync } from 'fs';
 import 'whatwg-fetch';
 import { ogg } from './ogg';
 import { removeFile } from './utils';
-import db from './db'; // Импортируем базу данных
+import { loadSchedule, saveSchedule } from './db';
 
-function Bot(props) {
+export default function Bot(props) {
     const { chat } = useBotContext();
     const [state, setState] = useState('start');
     const [text, setText] = useState('');
@@ -16,51 +16,40 @@ function Bot(props) {
     const [messages, setMessages] = useState([]); // Хранение истории сообщений
     const [day, setDay] = useState('');
     // Инициализация расписания из базы данных
-    const [schedule, setSchedule] = useState({
-        monday: [],
-        tuesday: [],
-        wednesday: [],
-        thursday: [],
-        friday: [],
-        saturday: [],
-    });
+    // const [schedule, setSchedule] = useState({
+    //     monday: [],
+    //     tuesday: [],
+    //     wednesday: [],
+    //     thursday: [],
+    //     friday: [],
+    //     saturday: [],
+    // });
 
-    const loadSchedule = () => {
-        db.all(`SELECT day, subjects FROM schedule WHERE chat_id = ?`, [chat.id], (err, rows) => {
-            if (err) {
-                console.error(err.message);
-                return;
-            }
-            const loadedSchedule = {};
-            rows.forEach((row) => {
-                loadedSchedule[row.day] = JSON.parse(row.subjects);
-            });
-            setSchedule(loadedSchedule);
-        });
-    };
+    const [schedule, setSchedule] = useState({});
 
-    const saveSchedule = (day, subjects) => {
-        const subjectsString = JSON.stringify(subjects);
-        db.run(
-            `INSERT INTO schedule (chat_id, day, subjects)
-        VALUES (?, ?, ?) 
-        ON CONFLICT(chat_id, day) 
-        DO UPDATE SET subjects = excluded.subjects`,
-            [chat.id, day, subjectsString],
-            (err) => {
-                if (err) {
-                    console.error(err.message);
-                    return;
-                }
-                console.log(`Расписание для ${chat.id} на ${day} сохранено.`);
-            },
-        );
-    };
-
-    // Загружаем расписание при старте
+    // Загрузка расписания при старте
     useEffect(() => {
-        loadSchedule();
+        const fetchSchedule = async () => {
+            try {
+                const data = await loadSchedule(chat.id);
+                setSchedule(data);
+            } catch (err) {
+                console.error(err);
+            }
+        };
+        fetchSchedule();
     }, [chat.id]);
+
+    // Сохранение расписания
+    const handleScheduleSave = async (day, subjects) => {
+        try {
+            await saveSchedule(chat.id, day, subjects);
+            setSchedule(prev => ({ ...prev, [day]: subjects }));
+        } catch (err) {
+            console.error(err);
+        }
+    };
+
 
     useCommand(({ command }) => {
         if (command === '/start') {
@@ -253,56 +242,45 @@ function Bot(props) {
         return `Расписание на ${capitalizeFirstLetter(day)}:\n${formattedSubjects}`;
     };
 
-    const capitalizeFirstLetter = (string) => {
-        let day;
-
-        switch (string) {
-            case 'monday':
-                day = 'понедельник';
-                break;
-            case 'tuesday':
-                day = 'вторник';
-                break;
-            case 'wednesday':
-                day = 'среда';
-                break;
-            case 'thursday':
-                day = 'четверг';
-                break;
-            case 'friday':
-                day = 'пятница';
-                break;
-            case 'saturday':
-                day = 'суббота';
-                break;
-            default:
-                break;
-        }
-
-        return day.charAt(0).toUpperCase() + day.slice(1);
+    const capitalizeFirstLetter = (day) => {
+        const days = {
+            monday: 'Понедельник',
+            tuesday: 'Вторник',
+            wednesday: 'Среда',
+            thursday: 'Четверг',
+            friday: 'Пятница',
+            saturday: 'Суббота',
+        };
+        return days[day]?.charAt(0).toUpperCase() + days[day].slice(1) || day;
     };
 
-    const viewSchedule = (day) => {
-        const subjects = schedule[day];
-        if (!subjects || subjects.length === 0 || subjects === {}) {
-            setState('noShed');
-            setText(`Расписание на ${capitalizeFirstLetter(day)} еще не добавлено.`);
-        } else {
-            setText(formatSchedule(subjects, day));
-            setState('viewShedDay');
-            setTimeout(() => setState('menu'), 3000);
-            // Делаю паузу в 3 секунды и вызываю меню
+    const viewSchedule = async (day) => {
+        try {
+            const subjects = schedule[day];
+            if (!subjects || subjects.length === 0) {
+                setState('noShed');
+                setText(`Расписание на ${capitalizeFirstLetter(day)} ещё не добавлено.`);
+            } else {
+                setText(formatSchedule(subjects, day));
+                setState('viewShedDay');
+            }
+        } catch (err) {
+            console.error(err);
         }
     };
 
-    const editSchedule = (day) => {
-        const subjects = schedule[day];
-        if (!subjects || subjects.length === 0 || subjects === {}) {
-            setState('noShed');
-            setText(`Расписание на ${capitalizeFirstLetter(day)} еще не добавлено.`);
-        } else {
-            setText(`Напиши новое расписание для ${capitalizeFirstLetter(day)}`);
-            setState('editShedDay');
+    const editSchedule = async (day) => {
+        try {
+            const subjects = schedule[day];
+            if (!subjects || subjects.length === 0 || subjects === {}) {
+                setState('noShed');
+                setText(`Расписание на ${capitalizeFirstLetter(day)} ещё не добавлено.`);
+            } else {
+                setText(`Напиши новое расписание для ${capitalizeFirstLetter(day)}`);
+                setState('editShedDay');
+            }
+        } catch (err) {
+            console.error(err);
         }
     };
 
