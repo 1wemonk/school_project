@@ -1,7 +1,7 @@
 import { UrbanBotDiscord } from '@urban-bot/discord';
 import { render, Root } from '@urban-bot/core';
 import dotenv from 'dotenv';
-import { App } from '../App';
+import { App } from '../../App';
 
 dotenv.config();
 
