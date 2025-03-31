@@ -1,7 +1,7 @@
 import { UrbanBotTelegram } from '@urban-bot/telegram';
 import { render, Root } from '@urban-bot/core';
 import dotenv from 'dotenv';
-import { App } from '../App';
+import { App } from '../../App';
 import { MixpanelProvider } from 'react-mixpanel-browser';
 
 dotenv.config();

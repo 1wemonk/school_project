@@ -3,8 +3,8 @@ import { Button, ButtonGroup, Text, useBotContext, useCommand, useText, useVoice
 import OpenAI from 'openai';
 import fs, { createReadStream, existsSync } from 'fs';
 import 'whatwg-fetch';
-import { ogg } from './ogg';
-import { removeFile } from './utils';
+import { ogg } from './src/ogg';
+import { removeFile } from './src/utils';
 import { loadSchedule, saveSchedule } from './db';
 
 export default function Bot(props) {
@@ -154,30 +154,6 @@ export default function Bot(props) {
 
     // console.log(schedule, 'shed');
 
-    async function transcription(filepath) {
-        try {
-            if (!existsSync(filepath)) {
-                console.error('Файл для транскрипции не найден.');
-            }
-            console.log('Используемый API-ключ:', process.env.OPENAI_API_KEY, 'filepath API');
-            console.log('Отправляю файл в OpenAI:', filepath, 'filepath');
-            const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-            const response = await openai.audio.transcriptions.create({
-                file: fs.createReadStream(filepath),
-                model: 'whisper-1',
-                response_format: 'text',
-            });
-            console.log('Ответ OpenAI:', response, 'filepath');
-            if (!response.text) {
-                console.error('OpenAI вернул пустой текст.', 'filepath');
-            }
-            return response.text;
-        } catch (e) {
-            console.error('Ошибка при транскрипции:', e.message, 'filepath');
-            return null;
-        }
-    }
-
     async function Chat(messages) {
         try {
             setText(`Отправляю сообщения в OpenAI: ${messages}`);
@@ -192,45 +168,6 @@ export default function Bot(props) {
             return '❌ Ошибка при получении ответа.';
         }
     }
-
-    useVoice(async (payload) => {
-        setState('voice');
-        setLoading(true);
-        setText('обрабатываю войс...');
-        const fileId = payload.nativeEvent.payload.voice.file_id;
-        try {
-            const response = await fetch(
-                `https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/getFile?file_id=${fileId}`,
-            );
-            const data = await response.json();
-            if (data.ok) {
-                const filePath = data.result.file_path;
-                const fileUrl = `https://api.telegram.org/file/bot${process.env.TELEGRAM_TOKEN}/${filePath}`;
-                const oggPath = await ogg.create(fileUrl, payload.chat.id);
-                const mp3Path = await ogg.toMp3(oggPath, payload.chat.id);
-                await removeFile(oggPath);
-                const text = await transcription(mp3Path);
-                setResponse(text);
-                if (!text) {
-                    setText(
-                        `❌ К сожалению, в данный момент функция распознавания речи временно недоступна. Пожалуйста, попробуйте позже или воспользуйтесь альтернативными способами ввода текста.`,
-                    );
-                    return;
-                }
-                const msgs = [...messages, { role: 'user', content: text }];
-                const response = await Chat(msgs);
-                setResponse(response);
-                await removeFile(mp3Path);
-            } else {
-                setText(`❌ Ошибка при получении ссылки на голосовое сообщение.`);
-            }
-        } catch (error) {
-            console.error('Ошибка при обработке голосового сообщения:', error);
-            setText(`❌ Ошибка при получении голосового сообщения.`);
-        } finally {
-            setLoading(false);
-        }
-    });
 
     const scheduleMaker = (text) => {
         const subjects = text.split(',').map((subject) => subject.trim());
