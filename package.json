@@ -1,11 +1,7 @@
 {
-  "name": "@feedtech-support-bot/starter-javascript",
+  "name": "school-project-bot-104f",
   "version": "1.0.0",
   "description": "Start write chatbots with urban-bot and javascript",
-  "repository": {
-    "type": "git",
-    "url": "https://feedtech.su"
-  },
   "license": "MIT",
   "main": "dist/index.js",
   "files": [
@@ -16,7 +12,7 @@
     "dev": "nodemon",
     "lint": "eslint \"./src\" --ext \".js,.jsx\"",
     "lint:fix": "npm run lint -- --fix",
-    "start": "node dist/index.js",
+    "start": "node api/index.js",
     "start-tunnel": "ngrok http 8080",
     "test": "jest"
   },
@@ -40,6 +36,7 @@
     "file-loader": "^6.2.0",
     "fluent-ffmpeg": "^2.1.3",
     "lodash": "^4.17.21",
+    "node-cron": "^3.0.3",
     "nodemailer": "^6.9.13",
     "openai": "^4.90.0",
     "react": "^18.2.0",
