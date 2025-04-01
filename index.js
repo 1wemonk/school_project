@@ -13,6 +13,29 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY
 const bot = new Telegraf(process.env.TELEGRAM_TOKEN);
 bot.use(session());
 
+const webhookUrl = 'https://school-project-rpni.vercel.app/api/index';
+
+async function ensureWebhookIsSet(bot, webhookUrl) {
+    try {
+        const { result } = await bot.telegram.getWebhookInfo();
+        if (!result.url || result.url !== webhookUrl) {
+            console.log('Устанавливаем новый вебхук...');
+            await bot.telegram.setWebhook(webhookUrl);
+        } else {
+            console.log('Вебхук уже установлен:', result.url);
+        }
+    } catch (error) {
+        console.error('Ошибка при проверке вебхука:', error);
+    }
+}
+
+if (webhookUrl) {
+    bot.telegram.webhookReply = true; // Важно для Vercel
+    ensureWebhookIsSet(bot, webhookUrl);
+} else {
+    console.error('WEBHOOK_URL is not set in environment variables.');
+}
+
 function ensureSession(ctx) {
     if (!ctx.session) {
         ctx.session = { state: 'menu', schedule: {}, selected_day: null };
