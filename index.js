@@ -161,6 +161,7 @@ async function logAction(chatId, action) {
 
 async function returnToMenu(ctx) {
     ensureSession(ctx);
+    ctx.session.state = 'menu'
     const message = await ctx.reply('Возвращаюсь в меню ...');
     try {
         await new Promise((resolve) => setTimeout(resolve, 1500));
@@ -274,6 +275,7 @@ bot.command('stats', async (ctx) => {
 });
 
 async function showMenu(ctx) {
+    ctx.session.state = 'menu'
     ensureSession(ctx);
     const keyboard = [
         ['Добавить расписание', 'Посмотреть расписание'],
