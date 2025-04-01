@@ -725,17 +725,38 @@ bot.on('text', async (ctx) => {
 const app = express();
 app.use(bodyParser.json());
 
-// Устанавливаем вебхук после инициализации бота
+async function ensureWebhookIsSet(bot, webhookUrl) {
+    try {
+        const { result } = await bot.telegram.getWebhookInfo();
+        if (result.url !== webhookUrl || !result.url) {
+            console.log('Устанавливаем новый вебхук...');
+            await bot.telegram.setWebhook(webhookUrl);
+        } else {
+            console.log('Вебхук уже установлен:', result.url);
+        }
+    } catch (error) {
+        console.error('Ошибка при проверке вебхука:', error);
+    }
+}
+
 const webhookUrl = 'https://school-project-rpni.vercel.app/api/index';
 if (webhookUrl) {
     bot.telegram.webhookReply = true; // Важно для Vercel
-    bot.telegram.setWebhook(webhookUrl);
+    ensureWebhookIsSet(bot, webhookUrl);
 } else {
     console.error('WEBHOOK_URL is not set in environment variables.');
 }
 
 // Обработчик вебхуков
-app.post('/api/index', bot.webhookCallback());
+app.post('/api/index', async (req, res) => {
+    try {
+        await bot.handleUpdate(req.body); // Обрабатываем запрос
+        res.sendStatus(200); // Отправляем успешный ответ Telegram
+    } catch (error) {
+        console.error('Ошибка обработки запроса:', error);
+        res.sendStatus(500); // Отправляем ошибку
+    }
+});
 
 // Запускаем сервер
 const PORT = process.env.PORT || 3000;
