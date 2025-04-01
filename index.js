@@ -165,7 +165,7 @@ async function returnToMenu(ctx) {
     try {
         await new Promise((resolve) => setTimeout(resolve, 1500));
         await ctx.deleteMessage(message.message_id);
-        showMenu(ctx);
+        await showMenu(ctx);
     } catch (error) {
         console.error('Ошибка при возврате в меню:', error);
     }
@@ -179,13 +179,13 @@ bot.command('start', async (ctx) => {
     ctx.replyWithHTML(
         `👋 Привет, ${ctx.chat.first_name}! Я твой виртуальный помощник по обучению. Готов помочь тебе с любыми вопросами, связанными со школой! 📚`,
     );
-    showMenu(ctx);
+    await showMenu(ctx);
 });
 
 bot.command('menu', async (ctx) => {
     ensureSession(ctx);
     ctx.session.state = 'menu';
-    showMenu(ctx);
+    await showMenu(ctx);
 });
 
 bot.command('viewschedule', async (ctx) => {
@@ -273,7 +273,7 @@ bot.command('stats', async (ctx) => {
     await returnToMenu(ctx); // Возвращаемся в меню
 });
 
-function showMenu(ctx) {
+async function showMenu(ctx) {
     ensureSession(ctx);
     const keyboard = [
         ['Добавить расписание', 'Посмотреть расписание'],
