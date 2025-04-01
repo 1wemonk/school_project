@@ -11,26 +11,5 @@
             "src": "/(.*)",
             "dest": "index.js"
         }
-    ],
-    "env": [
-        "TELEGRAM_TOKEN",
-        "SUPABASE_URL",
-        "SUPABASE_KEY",
-        "WEBHOOK_URL"
-    ],
-    "headers": [
-        {
-            "source": "/(.*)",
-            "headers": [
-                {
-                    "key": "Cache-Control",
-                    "value": "no-cache"
-                }
-            ]
-        }
-    ],
-    "postBuild": "npm install",
-    "installCommand": "npm install",
-    "buildCommand": "npm install",
-    "startCommand": "npm start"
+    ]
 }
