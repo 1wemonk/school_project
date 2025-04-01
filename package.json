@@ -8,24 +8,13 @@
     "dist/**/*"
   ],
   "scripts": {
-    "build": "webpack",
-    "dev": "nodemon",
-    "lint": "eslint \"./src\" --ext \".js,.jsx\"",
-    "lint:fix": "npm run lint -- --fix",
-    "start": "node api/index.js",
-    "start-tunnel": "ngrok http 8080",
-    "test": "jest"
+    "start": "node api/index.js"
   },
   "dependencies": {
     "@babel/core": "^7.20.12",
     "@babel/preset-env": "^7.20.2",
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "@supabase/supabase-js": "^2.49.4",
-    "@urban-bot/core": "^1.0.9",
-    "@urban-bot/discord": "^1.0.1",
-    "@urban-bot/facebook": "^1.0.1",
-    "@urban-bot/slack": "^1.0.1",
-    "@urban-bot/telegram": "^1.0.1",
     "axios": "^1.8.2",
     "babel-loader": "^9.1.2",
     "body-parser": "^2.2.0",
@@ -43,8 +32,7 @@
     "telegraf": "^4.16.3",
     "webpack": "^5.75.0",
     "webpack-cli": "^5.0.1",
-    "webpack-node-externals": "^3.0.0",
-    "whatwg-fetch": "^3.6.20"
+    "webpack-node-externals": "^3.0.0"
   },
   "devDependencies": {
     "eslint": "^8.34.0",
