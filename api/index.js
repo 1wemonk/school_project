@@ -3,6 +3,8 @@ const { Telegraf, session } = require('telegraf');
 const OpenAI = require('openai');
 const { createClient } = require('@supabase/supabase-js');
 const cron = require('node-cron');
+const express = require('express');
+const bodyParser = require('body-parser');
 
 // Настройка Supabase
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
@@ -40,47 +42,83 @@ function formatForTelegram(text) {
         .replace(/^- (.*)$/gm, '• $1'); // Ненумерованные списки
 }
 
-async function loadSchedule(chatId) {
-    const { data } = await supabase.from('schedule').select('day, subjects').eq('chat_id', chatId);
+async function loadSchedule(chatId, ctx) {
+    const { data, error } = await supabase.from('schedule').select('day, subjects').eq('chat_id', chatId);
+    if (error) {
+        console.error('Ошибка при загрузке расписания:', error);
+        ctx.reply('Произошла ошибка при загрузке расписания. Пожалуйста, обратитесь в тех. поддержку: @xrazycoolin');
+        return {};
+    }
+    console.log('Загруженное расписание:', data);
     return data.reduce((acc, row) => ({ ...acc, [row.day]: JSON.parse(row.subjects) }), {});
 }
 
-async function saveSchedule(chatId, day, subjects) {
-    await supabase.from('schedule').upsert({
+async function saveSchedule(chatId, day, subjects, ctx) {
+    const { error } = await supabase.from('schedule').upsert({
         chat_id: chatId,
         day: day,
         subjects: JSON.stringify(subjects),
-    });
+    }, { onConflict: 'chat_id,day' });
+    if (error) {
+        console.error('Ошибка при сохранении расписания:', error);
+        ctx.reply('Произошла ошибка при сохранении расписания. Пожалуйста, обратитесь в тех. поддержку: @xrazycoolin');
+        return false;
+    }
+    console.log('Расписание успешно сохранено:', { chatId, day, subjects });
+    return true;
 }
 
 async function loadNotes(chatId) {
-    const { data } = await supabase.from('notes').select('*').eq('chat_id', chatId);
+    const { data, error } = await supabase.from('notes').select('*').eq('chat_id', chatId);
+    if (error) {
+        console.error('Ошибка при загрузке заметок:', error);
+        return [];
+    }
+    console.log('Загруженные заметки:', data);
     return data;
 }
 
 async function saveNote(chatId, text) {
-    await supabase.from('notes').insert({
+    const { error } = await supabase.from('notes').insert({
         chat_id: chatId,
         text: text,
     });
+    if (error) {
+        console.error('Ошибка при сохранении заметки:', error);
+        return false;
+    }
+    console.log('Заметка успешно сохранена:', { chatId, text });
+    return true;
 }
 
 async function deleteNote(noteId) {
-    await supabase.from('notes').delete().eq('id', noteId);
+    const { error } = await supabase.from('notes').delete().eq('id', noteId);
+    if (error) {
+        console.error('Ошибка при удалении заметки:', error);
+        return false;
+    }
+    console.log('Заметка успешно удалена:', { noteId });
+    return true;
 }
 
 async function logAction(chatId, action) {
-    await supabase.from('actions').insert({
+    const { error } = await supabase.from('actions').insert({
         chat_id: chatId,
         action: action,
         timestamp: new Date().toISOString(),
     });
+    if (error) {
+        console.error('Ошибка при логировании действия:', error);
+        return false;
+    }
+    console.log('Действие успешно залогировано:', { chatId, action });
+    return true;
 }
 
 bot.command('start', async (ctx) => {
     ensureSession(ctx);
     ctx.session.state = 'menu';
-    ctx.session.schedule = (await loadSchedule(ctx.chat.id)) || {};
+    ctx.session.schedule = (await loadSchedule(ctx.chat.id, ctx)) || {};
     ctx.replyWithHTML(
         `👋 Привет, ${ctx.chat.first_name}! Я твой виртуальный помощник по обучению. Готов помочь тебе с любыми вопросами, связанными со школой! 📚`,
     );
@@ -102,6 +140,12 @@ bot.command('addschedule', async (ctx) => {
     ensureSession(ctx);
     ctx.session.state = 'add_schedule';
     await addSchedule(ctx);
+});
+
+bot.command('edit_schedule', async (ctx) => {
+    ensureSession(ctx);
+    ctx.session.state = 'edit_schedule';
+    await editSchedule(ctx);
 });
 
 bot.command('addsubject', async (ctx) => {
@@ -170,6 +214,7 @@ bot.command('stats', async (ctx) => {
 });
 
 async function showMenu(ctx) {
+    ctx.session.state = 'menu';
     ensureSession(ctx);
     const keyboard = [
         ['Добавить расписание', 'Посмотреть расписание'],
@@ -184,7 +229,6 @@ async function showMenu(ctx) {
 }
 
 async function viewSchedule(ctx) {
-    ctx.session.state = 'view_schedule';
     ensureSession(ctx);
     const keyboard = [
         ['Понедельник', 'Вторник'],
@@ -210,11 +254,28 @@ async function addSchedule(ctx) {
     ctx.session.state = 'add_day';
 }
 
+async function editSchedule(ctx) {
+    ensureSession(ctx);
+    const keyboard = [
+        ['Понедельник', 'Вторник'],
+        ['Среда', 'Четверг'],
+        ['Пятница', 'Суббота'],
+    ];
+
+    ctx.reply('Выбери день, который ты хочешь изменить:', {
+        reply_markup: { keyboard, resize_keyboard: true },
+    });
+    ctx.session.state = 'edit_day';
+}
+
 bot.on('text', async (ctx) => {
     ensureSession(ctx);
     const text = ctx.message.text;
     const state = ctx.session.state || 'menu';
     const schedule = ctx.session.schedule || {};
+
+    console.log('Текущее состояние:', state);
+    console.log('Текущее расписание:', schedule);
 
     const dayMapping = {
         Понедельник: 'monday',
@@ -227,9 +288,9 @@ bot.on('text', async (ctx) => {
 
     switch (state) {
         case 'add_day':
-            const selectedDay = dayMapping[text];
-            if (selectedDay) {
-                ctx.session.selected_day = selectedDay;
+            const selectedDayOne = dayMapping[text];
+            if (selectedDayOne) {
+                ctx.session.selected_day = selectedDayOne;
                 ctx.session.state = 'add_subjects';
                 ctx.reply(`Напиши расписание на ${text} через запятую:`);
             } else {
@@ -239,26 +300,100 @@ bot.on('text', async (ctx) => {
 
         case 'add_subjects':
             const subjects = text.split(',').map((s) => s.trim());
-            const day = ctx.session.selected_day;
-            schedule[day] = subjects;
+            const dayAddSubject = ctx.session.selected_day;
+            schedule[dayAddSubject] = subjects;
             ctx.session.schedule = schedule;
-            await saveSchedule(ctx.chat.id, day, subjects);
-            ctx.reply(`Расписание на ${capitalizeDay(day)} успешно сохранено!`);
-            ctx.session.state = 'menu';
+            const saved = await saveSchedule(ctx.chat.id, dayAddSubject, subjects, ctx);
+            if (saved) {
+                ctx.reply(`Расписание на ${capitalizeDay(dayAddSubject)} успешно сохранено!`);
+                ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
+                    setTimeout(() => {
+                        ctx.deleteMessage(sentMessage.message_id);
+                        showMenu(ctx);
+                    }, 1500);
+                });
+            } else {
+                ctx.reply('Ошибка при сохранении расписания. Пожалуйста, обратитесь в тех. поддержку: @xrazycoolin');
+            }
             break;
 
         case 'view_day':
             const viewDay = dayMapping[text];
             if (viewDay) {
-                const subjects = schedule[viewDay];
-                if (subjects && subjects.length > 0) {
+                // Перезагружаем расписание из базы перед отображением
+                const latestSchedule = await loadSchedule(ctx.chat.id, ctx);
+                const subjects = latestSchedule[viewDay] || [];
+                if (subjects.length > 0) {
                     const formatted = formatSchedule(subjects, viewDay);
                     ctx.replyWithHTML(formatted);
+                    ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
+                        setTimeout(() => {
+                            ctx.deleteMessage(sentMessage.message_id);
+                            showMenu(ctx);
+                        }, 1500);
+                    });
                 } else {
                     ctx.reply(`Расписание на ${capitalizeDay(viewDay)} еще не добавлено.`);
                 }
             } else {
                 ctx.reply('Выберите день из предложенных вариантов.');
+            }
+
+            break;
+
+        case 'edit_day':
+            const editDay = dayMapping[text];
+            if (editDay) {
+                ctx.session.selected_day = editDay;
+                ctx.session.state = 'edit_subjects';
+                const latestSchedule = await loadSchedule(ctx.chat.id, ctx);
+                const subjects = latestSchedule[editDay] || [];
+                const formatted = formatSchedule(subjects, editDay);
+                ctx.replyWithHTML(formatted);
+                setTimeout(
+                    () =>
+                        ctx.reply(
+                            `Введите номер предмета и новое название предмета через запятую (например, 1, Физика):`,
+                        ),
+                    1000,
+                );
+            } else {
+                ctx.reply('Выберите день из предложенных вариантов.');
+            }
+
+            break;
+
+        case 'edit_subjects':
+            const [subjectIndexStr, newSubjectName] = text.split(',').map((s) => s.trim());
+            const subjectIndex = parseInt(subjectIndexStr, 10) - 1;
+            const selectedDay = ctx.session.selected_day; // Переименовано для избежания конфликта
+            if (selectedDay && !isNaN(subjectIndex) && newSubjectName) {
+                if (schedule[selectedDay] && schedule[selectedDay][subjectIndex]) {
+                    schedule[selectedDay][subjectIndex] = newSubjectName;
+                    ctx.session.schedule = schedule;
+                    const saved = await saveSchedule(ctx.chat.id, selectedDay, schedule[selectedDay], ctx);
+                    if (saved) {
+                        ctx.reply(`Предмет на ${capitalizeDay(selectedDay)}, №${subjectIndex + 1} изменен на "${newSubjectName}".`);
+                        ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
+                            setTimeout(() => {
+                                ctx.deleteMessage(sentMessage.message_id);
+                                showMenu(ctx);
+                            }, 1500);
+                        });
+                    } else {
+                        ctx.reply('Ошибка при сохранении изменений. Пожалуйста, обратитесь в тех. поддержку: @xrazycoolin');
+                        ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
+                            setTimeout(() => {
+                                ctx.deleteMessage(sentMessage.message_id);
+                                showMenu(ctx);
+                            }, 1500);
+                        });
+                    }
+                } else {
+                    ctx.reply('Предмета с таким индексом нет.');
+                }
+            } else {
+                ctx.reply('Неверный формат. Введите номер предмета и новое название предмета через запятую.');
             }
             ctx.session.state = 'menu';
             break;
@@ -272,29 +407,26 @@ bot.on('text', async (ctx) => {
                 }
                 schedule[dayAdd].push(subjectName);
                 ctx.session.schedule = schedule;
-                await saveSchedule(ctx.chat.id, dayAdd, schedule[dayAdd]);
-                ctx.reply(`Предмет "${subjectName}" добавлен на ${capitalizeDay(dayAdd)}.`);
-            } else {
-                ctx.reply('Неверный формат. Введите день недели и название предмета через запятую.');
-            }
-            ctx.session.state = 'menu';
-            break;
-
-        case 'edit_subject':
-            const [editDayText, subjectIndexStr, newSubjectName] = text.split(',').map((s) => s.trim());
-            const editDay = dayMapping[editDayText];
-            const subjectIndex = parseInt(subjectIndexStr, 10) - 1;
-            if (editDay && !isNaN(subjectIndex) && newSubjectName) {
-                if (schedule[editDay] && schedule[editDay][subjectIndex]) {
-                    schedule[editDay][subjectIndex] = newSubjectName;
-                    ctx.session.schedule = schedule;
-                    await saveSchedule(ctx.chat.id, editDay, schedule[editDay]);
-                    ctx.reply(`Предмет на ${capitalizeDay(editDay)}, №${subjectIndex + 1} изменен на "${newSubjectName}".`);
+                const saved = await saveSchedule(ctx.chat.id, dayAdd, schedule[dayAdd], ctx);
+                if (saved) {
+                    ctx.reply(`Предмет "${subjectName}" добавлен на ${capitalizeDay(dayAdd)}.`);
+                    ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
+                        setTimeout(() => {
+                            ctx.deleteMessage(sentMessage.message_id);
+                            showMenu(ctx);
+                        }, 1500);
+                    });
                 } else {
-                    ctx.reply('Предмета с таким индексом нет.');
+                    ctx.reply('Ошибка при добавлении предмета. Пожалуйста, обратитесь в тех. поддержку: @xrazycoolin');
+                    ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
+                        setTimeout(() => {
+                            ctx.deleteMessage(sentMessage.message_id);
+                            showMenu(ctx);
+                        }, 1500);
+                    });
                 }
             } else {
-                ctx.reply('Неверный формат. Введите день недели, номер предмета и новое название предмета через запятую.');
+                ctx.reply('Неверный формат. Введите день недели и название предмета через запятую.');
             }
             ctx.session.state = 'menu';
             break;
@@ -307,21 +439,41 @@ bot.on('text', async (ctx) => {
                 if (schedule[deleteDay] && schedule[deleteDay][deleteSubjectIndex]) {
                     schedule[deleteDay].splice(deleteSubjectIndex, 1);
                     ctx.session.schedule = schedule;
-                    await saveSchedule(ctx.chat.id, deleteDay, schedule[deleteDay]);
-                    ctx.reply(`Предмет на ${capitalizeDay(deleteDay)}, №${deleteSubjectIndex + 1} удален.`);
+                    const saved = await saveSchedule(ctx.chat.id, deleteDay, schedule[deleteDay], ctx);
+                    if (saved) {
+                        ctx.reply(`Предмет на ${capitalizeDay(deleteDay)}, №${deleteSubjectIndex + 1} удален.`);
+                        ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
+                            setTimeout(() => {
+                                ctx.deleteMessage(sentMessage.message_id);
+                                showMenu(ctx);
+                            }, 1500);
+                        });
+                    } else {
+                        ctx.reply('Ошибка при удалении предмета. Пожалуйста, обратитесь в тех. поддержку: @xrazycoolin');
+                        ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
+                            setTimeout(() => {
+                                ctx.deleteMessage(sentMessage.message_id);
+                                showMenu(ctx);
+                            }, 1500);
+                        });
+                    }
                 } else {
                     ctx.reply('Предмета с таким индексом нет.');
                 }
             } else {
                 ctx.reply('Неверный формат. Введите день недели и номер предмета для удаления через запятую.');
             }
-            ctx.session.state = 'menu';
             break;
 
         case 'add_note':
             await saveNote(ctx.chat.id, text);
             ctx.reply('Заметка добавлена.');
-            ctx.session.state = 'menu';
+            ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
+                setTimeout(() => {
+                    ctx.deleteMessage(sentMessage.message_id);
+                    showMenu(ctx);
+                }, 1500);
+            });
             break;
 
         case 'delete_note':
@@ -330,6 +482,12 @@ bot.on('text', async (ctx) => {
             if (notes[noteIndex]) {
                 await deleteNote(notes[noteIndex].id);
                 ctx.reply('Заметка удалена.');
+                ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
+                    setTimeout(() => {
+                        ctx.deleteMessage(sentMessage.message_id);
+                        showMenu(ctx);
+                    }, 1500);
+                });
             } else {
                 ctx.reply('Нет заметки с таким номером.');
             }
@@ -344,11 +502,22 @@ bot.on('text', async (ctx) => {
                     messages: [{ role: 'user', content: `Сгенерируй домашнее задание по ${text}` }],
                 });
                 ctx.replyWithHTML(formatForTelegram(response.choices[0].message.content));
+                ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
+                    setTimeout(() => {
+                        ctx.deleteMessage(sentMessage.message_id);
+                        showMenu(ctx);
+                    }, 1500);
+                });
             } catch (error) {
                 console.error('Ошибка при генерации домашнего задания:', error);
-                ctx.reply('Ошибка при генерации домашнего задания.');
+                ctx.reply('Ошибка при генерации домашнего задания. Пожалуйста, обратитесь в тех. поддержку: @xrazycoolin');
+                ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
+                    setTimeout(() => {
+                        ctx.deleteMessage(sentMessage.message_id);
+                        showMenu(ctx);
+                    }, 1500);
+                });
             }
-            ctx.session.state = 'menu';
             break;
 
         case 'explain':
@@ -361,7 +530,7 @@ bot.on('text', async (ctx) => {
                 ctx.replyWithHTML(formatForTelegram(response.choices[0].message.content));
             } catch (error) {
                 console.error('Ошибка при объяснении концепции:', error);
-                ctx.reply('Ошибка при объяснении концепции.');
+                ctx.reply('Ошибка при объяснении концепции. Пожалуйста, обратитесь в тех. поддержку: @xrazycoolin');
             }
             ctx.session.state = 'menu';
             break;
@@ -374,11 +543,22 @@ bot.on('text', async (ctx) => {
                     messages: [{ role: 'user', content: `Найди статью по теме ${text}` }],
                 });
                 ctx.replyWithHTML(formatForTelegram(response.choices[0].message.content));
+                ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
+                    setTimeout(() => {
+                        ctx.deleteMessage(sentMessage.message_id);
+                        showMenu(ctx);
+                    }, 1500);
+                });
             } catch (error) {
                 console.error('Ошибка при поиске статьи:', error);
-                ctx.reply('Ошибка при поиске статьи.');
+                ctx.reply('Ошибка при поиске статьи. Пожалуйста, обратитесь в тех. поддержку: @xrazycoolin');
+                ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
+                    setTimeout(() => {
+                        ctx.deleteMessage(sentMessage.message_id);
+                        showMenu(ctx);
+                    }, 1500);
+                });
             }
-            ctx.session.state = 'menu';
             break;
 
         case 'find_video':
@@ -391,9 +571,14 @@ bot.on('text', async (ctx) => {
                 ctx.replyWithHTML(formatForTelegram(response.choices[0].message.content));
             } catch (error) {
                 console.error('Ошибка при поиске видеоурока:', error);
-                ctx.reply('Ошибка при поиске видеоурока.');
+                ctx.reply('Ошибка при поиске видеоурока. Пожалуйста, обратитесь в тех. поддержку: @xrazycoolin');
+                ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
+                    setTimeout(() => {
+                        ctx.deleteMessage(sentMessage.message_id);
+                        showMenu(ctx);
+                    }, 1500);
+                });
             }
-            ctx.session.state = 'menu';
             break;
 
         case 'dialog':
@@ -406,9 +591,14 @@ bot.on('text', async (ctx) => {
                 ctx.replyWithHTML(formatForTelegram(response.choices[0].message.content));
             } catch (error) {
                 console.error('Ошибка при обработке запроса:', error);
-                ctx.reply('Ошибка при обработке запроса.');
+                ctx.reply('Ошибка при обработке запроса. Пожалуйста, обратитесь в тех. поддержку: @xrazycoolin');
+                ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
+                    setTimeout(() => {
+                        ctx.deleteMessage(sentMessage.message_id);
+                        showMenu(ctx);
+                    }, 1500);
+                });
             }
-            ctx.session.state = 'menu';
             break;
 
         default:
@@ -419,7 +609,7 @@ bot.on('text', async (ctx) => {
                 await viewSchedule(ctx);
             } else if (text === 'Изменить расписание') {
                 ctx.session.state = 'edit_schedule';
-                await addSchedule(ctx); // Используем ту же функцию выбора дня
+                await editSchedule(ctx);
             } else if (text === 'Поговорить со мной') {
                 ctx.session.state = 'dialog';
                 ctx.reply('Напиши мне свой вопрос:');
@@ -459,7 +649,11 @@ function formatSchedule(subjects, day) {
 
 // Уведомления о занятиях
 async function sendReminders() {
-    const { data } = await supabase.from('schedule').select('*');
+    const { data, error } = await supabase.from('schedule').select('*');
+    if (error) {
+        console.error('Ошибка при загрузке расписания для напоминаний:', error);
+        return;
+    }
     data.forEach(async (item) => {
         const chatId = item.chat_id;
         const schedule = JSON.parse(item.subjects);
@@ -500,7 +694,12 @@ async function showNotes(ctx) {
 
 // Команда для показа статистики
 async function showStats(ctx) {
-    const { data } = await supabase.from('actions').select('*').eq('chat_id', ctx.chat.id);
+    const { data, error } = await supabase.from('actions').select('*').eq('chat_id', ctx.chat.id);
+    if (error) {
+        console.error('Ошибка при загрузке статистики:', error);
+        ctx.reply('Произошла ошибка при загрузке статистики.');
+        return;
+    }
     if (data.length) {
         const stats = data.reduce((acc, action) => {
             acc[action.action] = (acc[action.action] || 0) + 1;
@@ -518,17 +717,28 @@ bot.on('text', async (ctx) => {
     ensureSession(ctx);
     const text = ctx.message.text;
     const state = ctx.session.state || 'menu';
-
     await logAction(ctx.chat.id, `text: ${text}`);
 });
 
-// Запуск бота в режиме опроса
-bot.startPolling().then(() => {
-    console.log('Бот запущен!');
-}).catch((err) => {
-    console.error('Ошибка при запуске бота:', err);
+// Настройка Express
+const app = express();
+app.use(bodyParser.json());
+
+// Обработчик вебхуков
+app.post('/api/index', (req, res) => {
+    bot.handleUpdate(req.body);
+    res.sendStatus(200);
 });
 
-// Обработка завершения процесса
-process.once('SIGINT', () => bot.stop('SIGINT'));
-process.once('SIGTERM', () => bot.stop('SIGTERM'));
+// Экспортируем функцию для Vercel
+module.exports = app;
+
+// Устанавливаем вебхук при запуске приложения
+const webhookUrl = process.env.WEBHOOK_URL;
+if (webhookUrl) {
+    bot.setWebhook(webhookUrl);
+} else {
+    console.error('WEBHOOK_URL is not set in environment variables.');
+}
+
+console.log('Бот запущен!');
