@@ -625,8 +625,8 @@ bot.on('text', async (ctx) => {
                 ctx.session.state = 'delete_subject';
                 ctx.reply('Введите день недели и номер предмета через запятую (Например, Понедельник, 1):');
             } else if (text === 'Изменить предмет в расписании') {
-                ctx.session.state = 'edit_subject';
-                ctx.reply('Введите день недели и номер предмета через запятую (Например, Понедельник, Математика):');
+                ctx.session.state = 'edit_subjects';
+                await editSchedule(ctx)
             } else if (text === 'Показать заметки') {
                 await showNotes(ctx);
             } else if (text === 'Статистика') {
