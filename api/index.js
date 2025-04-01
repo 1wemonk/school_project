@@ -54,11 +54,14 @@ async function loadSchedule(chatId, ctx) {
 }
 
 async function saveSchedule(chatId, day, subjects, ctx) {
-    const { error } = await supabase.from('schedule').upsert({
-        chat_id: chatId,
-        day: day,
-        subjects: JSON.stringify(subjects),
-    }, { onConflict: 'chat_id,day' });
+    const { error } = await supabase.from('schedule').upsert(
+        {
+            chat_id: chatId,
+            day: day,
+            subjects: JSON.stringify(subjects),
+        },
+        { onConflict: 'chat_id,day' },
+    );
     if (error) {
         console.error('Ошибка при сохранении расписания:', error);
         ctx.reply('Произошла ошибка при сохранении расписания. Пожалуйста, обратитесь в тех. поддержку: @xrazycoolin');
@@ -157,7 +160,9 @@ bot.command('addsubject', async (ctx) => {
 bot.command('editsubject', async (ctx) => {
     ensureSession(ctx);
     ctx.session.state = 'edit_subject';
-    ctx.reply('Введите день недели, номер предмета и новое название предмета через запятую (например, Понедельник, 1, Физика):');
+    ctx.reply(
+        'Введите день недели, номер предмета и новое название предмета через запятую (например, Понедельник, 1, Физика):',
+    );
 });
 
 bot.command('deletesubject', async (ctx) => {
@@ -373,7 +378,11 @@ bot.on('text', async (ctx) => {
                     ctx.session.schedule = schedule;
                     const saved = await saveSchedule(ctx.chat.id, selectedDay, schedule[selectedDay], ctx);
                     if (saved) {
-                        ctx.reply(`Предмет на ${capitalizeDay(selectedDay)}, №${subjectIndex + 1} изменен на "${newSubjectName}".`);
+                        ctx.reply(
+                            `Предмет на ${capitalizeDay(selectedDay)}, №${
+                                subjectIndex + 1
+                            } изменен на "${newSubjectName}".`,
+                        );
                         ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
                             setTimeout(() => {
                                 ctx.deleteMessage(sentMessage.message_id);
@@ -381,7 +390,9 @@ bot.on('text', async (ctx) => {
                             }, 1500);
                         });
                     } else {
-                        ctx.reply('Ошибка при сохранении изменений. Пожалуйста, обратитесь в тех. поддержку: @xrazycoolin');
+                        ctx.reply(
+                            'Ошибка при сохранении изменений. Пожалуйста, обратитесь в тех. поддержку: @xrazycoolin',
+                        );
                         ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
                             setTimeout(() => {
                                 ctx.deleteMessage(sentMessage.message_id);
@@ -449,7 +460,9 @@ bot.on('text', async (ctx) => {
                             }, 1500);
                         });
                     } else {
-                        ctx.reply('Ошибка при удалении предмета. Пожалуйста, обратитесь в тех. поддержку: @xrazycoolin');
+                        ctx.reply(
+                            'Ошибка при удалении предмета. Пожалуйста, обратитесь в тех. поддержку: @xrazycoolin',
+                        );
                         ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
                             setTimeout(() => {
                                 ctx.deleteMessage(sentMessage.message_id);
@@ -510,7 +523,9 @@ bot.on('text', async (ctx) => {
                 });
             } catch (error) {
                 console.error('Ошибка при генерации домашнего задания:', error);
-                ctx.reply('Ошибка при генерации домашнего задания. Пожалуйста, обратитесь в тех. поддержку: @xrazycoolin');
+                ctx.reply(
+                    'Ошибка при генерации домашнего задания. Пожалуйста, обратитесь в тех. поддержку: @xrazycoolin',
+                );
                 ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
                     setTimeout(() => {
                         ctx.deleteMessage(sentMessage.message_id);
@@ -705,7 +720,9 @@ async function showStats(ctx) {
             acc[action.action] = (acc[action.action] || 0) + 1;
             return acc;
         }, {});
-        const statsMessage = Object.entries(stats).map(([action, count]) => `${action}: ${count}`).join('\n');
+        const statsMessage = Object.entries(stats)
+            .map(([action, count]) => `${action}: ${count}`)
+            .join('\n');
         ctx.replyWithHTML(`<b>Статистика использования:</b>\n${statsMessage}`);
     } else {
         ctx.reply('У вас нет записей в статистике.');
@@ -724,21 +741,31 @@ bot.on('text', async (ctx) => {
 const app = express();
 app.use(bodyParser.json());
 
-// Обработчик вебхуков
-app.post('/api/index', (req, res) => {
-    bot.handleUpdate(req.body);
-    res.sendStatus(200);
-});
-
-// Экспортируем функцию для Vercel
-module.exports = app;
-
-// Устанавливаем вебхук при запуске приложения
+// Устанавливаем вебхук после инициализации бота
 const webhookUrl = process.env.WEBHOOK_URL;
 if (webhookUrl) {
+    bot.webhookReply = true; // Важно для Vercel
+    bot.webhookCallback = bot.webhookCallback();
+    bot.webhookReply = true;
     bot.setWebhook(webhookUrl);
 } else {
     console.error('WEBHOOK_URL is not set in environment variables.');
 }
 
-console.log('Бот запущен!');
+// Обработчик вебхуков
+app.post('/api/index', bot.webhookCallback());
+
+// Запускаем бота
+bot.launch()
+    .then(() => {
+        console.log('Бот инициализирован!');
+    })
+    .catch((error) => {
+        console.error('Ошибка инициализации бота:', error);
+    });
+
+// Запускаем сервер
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`Сервер запущен на порту ${PORT}`);
+});
