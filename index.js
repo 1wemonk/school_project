@@ -726,7 +726,7 @@ const app = express();
 app.use(bodyParser.json());
 
 // Устанавливаем вебхук после инициализации бота
-const webhookUrl = process.env.WEBHOOK_URL;
+const webhookUrl = 'https://school-project-rpni.vercel.app/api/index';
 if (webhookUrl) {
     bot.telegram.webhookReply = true; // Важно для Vercel
     bot.telegram.setWebhook(webhookUrl);
