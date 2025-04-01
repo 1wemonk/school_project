@@ -179,13 +179,13 @@ bot.command('start', async (ctx) => {
     ctx.replyWithHTML(
         `👋 Привет, ${ctx.chat.first_name}! Я твой виртуальный помощник по обучению. Готов помочь тебе с любыми вопросами, связанными со школой! 📚`,
     );
-    await returnToMenu(ctx);
+    await showMenu(ctx);
 });
 
 bot.command('menu', async (ctx) => {
     ensureSession(ctx);
     ctx.session.state = 'menu';
-    await returnToMenu(ctx);
+    await showMenu(ctx);
 });
 
 bot.command('viewschedule', async (ctx) => {
