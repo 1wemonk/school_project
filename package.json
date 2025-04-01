@@ -27,12 +27,7 @@
     "node-cron": "^3.0.3",
     "nodemailer": "^6.9.13",
     "openai": "^4.90.0",
-    "smtp": "^0.1.4",
-    "sqlite3": "^5.1.7",
-    "telegraf": "^4.16.3",
-    "webpack": "^5.75.0",
-    "webpack-cli": "^5.0.1",
-    "webpack-node-externals": "^3.0.0"
+    "telegraf": "^4.16.3"
   },
   "devDependencies": {
     "eslint": "^8.34.0",
