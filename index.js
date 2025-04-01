@@ -17,15 +17,25 @@ const webhookUrl = 'https://school-project-rpni.vercel.app/api/index';
 
 async function ensureWebhookIsSet(bot, webhookUrl) {
     try {
-        const { result } = await bot.telegram.getWebhookInfo();
-        if (!result.url || result.url !== webhookUrl) {
-            console.log('Устанавливаем новый вебхук...');
+        const response = await bot.telegram.getWebhookInfo(); // Получаем информацию о вебхуке
+        if (!response || !response.result || !response.result.url) {
+            console.log('Вебхук не установлен или информация отсутствует. Устанавливаем новый...');
+            await bot.telegram.setWebhook(webhookUrl);
+        } else if (response.result.url !== webhookUrl) {
+            console.log('Текущий вебхук не соответствует требуемому URL. Обновляем...');
             await bot.telegram.setWebhook(webhookUrl);
         } else {
-            console.log('Вебхук уже установлен:', result.url);
+            console.log('Вебхук уже установлен:', response.result.url);
         }
     } catch (error) {
         console.error('Ошибка при проверке вебхука:', error);
+        // Если произошла ошибка, попробуйте установить вебхук заново
+        try {
+            console.log('Попытка установки нового вебхука...');
+            await bot.telegram.setWebhook(webhookUrl);
+        } catch (setWebhookError) {
+            console.error('Ошибка при установке вебхука:', setWebhookError);
+        }
     }
 }
 
