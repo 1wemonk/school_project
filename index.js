@@ -15,12 +15,12 @@ bot.use(session());
 
 const webhookUrl = 'https://school-project-rpni.vercel.app/api/index';
 
- function ensureWebhookIsSet(bot, webhookUrl) {
+async function ensureWebhookIsSet(bot, webhookUrl) {
     try {
-        const { result } = bot.telegram.getWebhookInfo();
+        const { result } = await bot.telegram.getWebhookInfo();
         if (!result.url || result.url !== webhookUrl) {
             console.log('Устанавливаем новый вебхук...');
-            bot.telegram.setWebhook(webhookUrl);
+            await bot.telegram.setWebhook(webhookUrl);
         } else {
             console.log('Вебхук уже установлен:', result.url);
         }
@@ -31,7 +31,7 @@ const webhookUrl = 'https://school-project-rpni.vercel.app/api/index';
 
 if (webhookUrl) {
     bot.telegram.webhookReply = true; // Важно для Vercel
-    ensureWebhookIsSet(bot, webhookUrl);
+    await ensureWebhookIsSet(bot, webhookUrl);
 } else {
     console.error('WEBHOOK_URL is not set in environment variables.');
 }
