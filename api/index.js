@@ -2,6 +2,7 @@ require('dotenv').config();
 const { Telegraf, session } = require('telegraf');
 const OpenAI = require('openai');
 const { createClient } = require('@supabase/supabase-js');
+const cron = require('node-cron');
 const express = require('express');
 const bodyParser = require('body-parser');
 
@@ -11,31 +12,6 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY
 // Настройка бота
 const bot = new Telegraf(process.env.TELEGRAM_TOKEN);
 bot.use(session());
-
-// Настройка Express
-const app = express();
-app.use(bodyParser.json());
-
-// Вебхук
-bot.webhookReply = true;
-const webhookUrl = process.env.WEBHOOK_URL;
-if (webhookUrl) {
-    bot.setWebhook(webhookUrl);
-} else {
-    console.error('WEBHOOK_URL not set');
-}
-
-// Обработчик вебхуков
-app.post('/api/index', bot.webhookCallback());
-
-// Запуск бота
-bot.launch();
-
-// Запуск сервера
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-});
 
 function ensureSession(ctx) {
     if (!ctx.session) {
@@ -78,14 +54,11 @@ async function loadSchedule(chatId, ctx) {
 }
 
 async function saveSchedule(chatId, day, subjects, ctx) {
-    const { error } = await supabase.from('schedule').upsert(
-        {
-            chat_id: chatId,
-            day: day,
-            subjects: JSON.stringify(subjects),
-        },
-        { onConflict: 'chat_id,day' },
-    );
+    const { error } = await supabase.from('schedule').upsert({
+        chat_id: chatId,
+        day: day,
+        subjects: JSON.stringify(subjects),
+    }, { onConflict: 'chat_id,day' });
     if (error) {
         console.error('Ошибка при сохранении расписания:', error);
         ctx.reply('Произошла ошибка при сохранении расписания. Пожалуйста, обратитесь в тех. поддержку: @xrazycoolin');
@@ -184,9 +157,7 @@ bot.command('addsubject', async (ctx) => {
 bot.command('editsubject', async (ctx) => {
     ensureSession(ctx);
     ctx.session.state = 'edit_subject';
-    ctx.reply(
-        'Введите день недели, номер предмета и новое название предмета через запятую (например, Понедельник, 1, Физика):',
-    );
+    ctx.reply('Введите день недели, номер предмета и новое название предмета через запятую (например, Понедельник, 1, Физика):');
 });
 
 bot.command('deletesubject', async (ctx) => {
@@ -205,6 +176,7 @@ bot.command('shownotes', async (ctx) => {
     ensureSession(ctx);
     await showNotes(ctx);
     ctx.session.state = 'menu';
+    await showMenu(ctx); // Возвращаемся в меню
 });
 
 bot.command('deletenote', async (ctx) => {
@@ -240,10 +212,11 @@ bot.command('findvideo', async (ctx) => {
 bot.command('stats', async (ctx) => {
     ensureSession(ctx);
     await showStats(ctx);
+    ctx.session.state = 'menu';
+    await showMenu(ctx); // Возвращаемся в меню
 });
 
 async function showMenu(ctx) {
-    ctx.session.state = 'menu';
     ensureSession(ctx);
     const keyboard = [
         ['Добавить расписание', 'Посмотреть расписание'],
@@ -290,7 +263,6 @@ async function editSchedule(ctx) {
         ['Среда', 'Четверг'],
         ['Пятница', 'Суббота'],
     ];
-
     ctx.reply('Выбери день, который ты хочешь изменить:', {
         reply_markup: { keyboard, resize_keyboard: true },
     });
@@ -302,7 +274,6 @@ bot.on('text', async (ctx) => {
     const text = ctx.message.text;
     const state = ctx.session.state || 'menu';
     const schedule = ctx.session.schedule || {};
-
     console.log('Текущее состояние:', state);
     console.log('Текущее расписание:', schedule);
 
@@ -326,7 +297,6 @@ bot.on('text', async (ctx) => {
                 ctx.reply('Выберите день из предложенных вариантов.');
             }
             break;
-
         case 'add_subjects':
             const subjects = text.split(',').map((s) => s.trim());
             const dayAddSubject = ctx.session.selected_day;
@@ -343,9 +313,14 @@ bot.on('text', async (ctx) => {
                 });
             } else {
                 ctx.reply('Ошибка при сохранении расписания. Пожалуйста, обратитесь в тех. поддержку: @xrazycoolin');
+                ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
+                    setTimeout(() => {
+                        ctx.deleteMessage(sentMessage.message_id);
+                        showMenu(ctx);
+                    }, 1500);
+                });
             }
             break;
-
         case 'view_day':
             const viewDay = dayMapping[text];
             if (viewDay) {
@@ -367,9 +342,7 @@ bot.on('text', async (ctx) => {
             } else {
                 ctx.reply('Выберите день из предложенных вариантов.');
             }
-
             break;
-
         case 'edit_day':
             const editDay = dayMapping[text];
             if (editDay) {
@@ -389,9 +362,7 @@ bot.on('text', async (ctx) => {
             } else {
                 ctx.reply('Выберите день из предложенных вариантов.');
             }
-
             break;
-
         case 'edit_subjects':
             const [subjectIndexStr, newSubjectName] = text.split(',').map((s) => s.trim());
             const subjectIndex = parseInt(subjectIndexStr, 10) - 1;
@@ -432,7 +403,6 @@ bot.on('text', async (ctx) => {
             }
             ctx.session.state = 'menu';
             break;
-
         case 'add_subject':
             const [dayTextAdd, subjectName] = text.split(',').map((s) => s.trim());
             const dayAdd = dayMapping[dayTextAdd];
@@ -465,7 +435,6 @@ bot.on('text', async (ctx) => {
             }
             ctx.session.state = 'menu';
             break;
-
         case 'delete_subject':
             const [deleteDayText, deleteSubjectIndexStr] = text.split(',').map((s) => s.trim());
             const deleteDay = dayMapping[deleteDayText];
@@ -500,8 +469,8 @@ bot.on('text', async (ctx) => {
             } else {
                 ctx.reply('Неверный формат. Введите день недели и номер предмета для удаления через запятую.');
             }
+            ctx.session.state = 'menu';
             break;
-
         case 'add_note':
             await saveNote(ctx.chat.id, text);
             ctx.reply('Заметка добавлена.');
@@ -512,7 +481,6 @@ bot.on('text', async (ctx) => {
                 }, 1500);
             });
             break;
-
         case 'delete_note':
             const noteIndex = parseInt(text, 10) - 1;
             const notes = await loadNotes(ctx.chat.id);
@@ -530,7 +498,6 @@ bot.on('text', async (ctx) => {
             }
             ctx.session.state = 'menu';
             break;
-
         case 'homework':
             try {
                 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -558,7 +525,6 @@ bot.on('text', async (ctx) => {
                 });
             }
             break;
-
         case 'explain':
             try {
                 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -573,7 +539,6 @@ bot.on('text', async (ctx) => {
             }
             ctx.session.state = 'menu';
             break;
-
         case 'find_article':
             try {
                 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -599,7 +564,6 @@ bot.on('text', async (ctx) => {
                 });
             }
             break;
-
         case 'find_video':
             try {
                 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -619,7 +583,6 @@ bot.on('text', async (ctx) => {
                 });
             }
             break;
-
         case 'dialog':
             try {
                 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -639,7 +602,6 @@ bot.on('text', async (ctx) => {
                 });
             }
             break;
-
         default:
             if (text === 'Добавить расписание') {
                 ctx.session.state = 'add_schedule';
@@ -698,7 +660,6 @@ async function sendReminders() {
         const schedule = JSON.parse(item.subjects);
         const now = new Date();
         const dayOfWeek = now.getDay(); // 0 - воскресенье, 1 - понедельник, ...
-
         const dayMapping = {
             1: 'monday',
             2: 'tuesday',
@@ -707,7 +668,6 @@ async function sendReminders() {
             5: 'friday',
             6: 'saturday',
         };
-
         const day = dayMapping[dayOfWeek];
         if (day && schedule[day]) {
             const subjects = schedule[day];
@@ -761,3 +721,31 @@ bot.on('text', async (ctx) => {
     await logAction(ctx.chat.id, `text: ${text}`);
 });
 
+// Настройка Express
+const app = express();
+app.use(bodyParser.json());
+
+// Устанавливаем вебхук после инициализации бота
+const webhookUrl = process.env.WEBHOOK_URL;
+if (webhookUrl) {
+    bot.telegram.webhookReply = true; // Важно для Vercel
+    bot.telegram.setWebhook(webhookUrl);
+} else {
+    console.error('WEBHOOK_URL is not set in environment variables.');
+}
+
+// Обработчик вебхуков
+app.post('/api/index', bot.webhookCallback());
+
+// Запускаем сервер
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`Сервер запущен на порту ${PORT}`);
+});
+
+// Запуск бота
+bot.launch().then(() => {
+    console.log('Бот инициализирован!');
+}).catch((error) => {
+    console.error('Ошибка инициализации бота:', error);
+});
