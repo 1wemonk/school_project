@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Start write chatbots with urban-bot and javascript",
   "license": "MIT",
-  "main": "dist/index.js",
+  "main": "api/index.js",
   "files": [
     "dist/**/*"
   ],
