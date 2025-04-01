@@ -31,7 +31,7 @@ async function ensureWebhookIsSet(bot, webhookUrl) {
 
 if (webhookUrl) {
     bot.telegram.webhookReply = true; // Важно для Vercel
-    ensureWebhookIsSet(bot, webhookUrl);
+    await ensureWebhookIsSet(bot, webhookUrl);
 } else {
     console.error('WEBHOOK_URL is not set in environment variables.');
 }
