@@ -735,7 +735,7 @@ if (webhookUrl) {
 }
 
 // Обработчик вебхуков
-app.post('/index', bot.webhookCallback());
+app.post('/api/index', bot.webhookCallback());
 
 // Запускаем сервер
 const PORT = process.env.PORT || 3000;

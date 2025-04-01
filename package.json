@@ -3,12 +3,12 @@
   "version": "1.0.0",
   "description": "Start write chatbots with urban-bot and javascript",
   "license": "MIT",
-  "main": "index.js",
+  "main": "api/index.js",
   "files": [
     "dist/**/*"
   ],
   "scripts": {
-    "start": "node index.js"
+    "start": "node api/index.js"
   },
   "dependencies": {
     "@babel/core": "^7.20.12",
