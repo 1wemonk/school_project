@@ -13,6 +13,43 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY
 const bot = new Telegraf(process.env.TELEGRAM_TOKEN);
 bot.use(session());
 
+// Настройка Express
+const app = express();
+app.use(bodyParser.json());
+
+module.exports = app;
+
+// Устанавливаем вебхук после инициализации бота
+const webhookUrl = process.env.WEBHOOK_URL;
+if (webhookUrl) {
+    bot.webhookReply = true; // Важно для Vercel
+    bot.webhookCallback = bot.webhookCallback();
+    bot.webhookReply = true;
+    bot.setWebhook(webhookUrl);
+} else {
+    console.error('WEBHOOK_URL is not set in environment variables.');
+}
+
+// Обработчик вебхуков
+app.post('/api/index', bot.webhookCallback());
+
+// Запускаем бота
+bot.launch()
+    .then(() => {
+        console.log('Бот инициализирован!');
+    })
+    .catch((error) => {
+        console.error('Ошибка инициализации бота:', error);
+    });
+
+// Запускаем сервер
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`Сервер запущен на порту ${PORT}`);
+});
+
+
+
 function ensureSession(ctx) {
     if (!ctx.session) {
         ctx.session = { state: 'menu', schedule: {}, selected_day: null };
@@ -737,35 +774,3 @@ bot.on('text', async (ctx) => {
     await logAction(ctx.chat.id, `text: ${text}`);
 });
 
-// Настройка Express
-const app = express();
-app.use(bodyParser.json());
-
-// Устанавливаем вебхук после инициализации бота
-const webhookUrl = process.env.WEBHOOK_URL;
-if (webhookUrl) {
-    bot.webhookReply = true; // Важно для Vercel
-    bot.webhookCallback = bot.webhookCallback();
-    bot.webhookReply = true;
-    bot.setWebhook(webhookUrl);
-} else {
-    console.error('WEBHOOK_URL is not set in environment variables.');
-}
-
-// Обработчик вебхуков
-app.post('/api/index', bot.webhookCallback());
-
-// Запускаем бота
-bot.launch()
-    .then(() => {
-        console.log('Бот инициализирован!');
-    })
-    .catch((error) => {
-        console.error('Ошибка инициализации бота:', error);
-    });
-
-// Запускаем сервер
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-    console.log(`Сервер запущен на порту ${PORT}`);
-});
