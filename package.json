@@ -12,7 +12,7 @@
     "dev": "nodemon",
     "lint": "eslint \"./src\" --ext \".js,.jsx\"",
     "lint:fix": "npm run lint -- --fix",
-    "start": "node api/index.js",
+    "start": "node src/index.js",
     "start-tunnel": "ngrok http 8080",
     "test": "jest"
   },
