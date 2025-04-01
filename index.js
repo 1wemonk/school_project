@@ -52,6 +52,17 @@ function ensureSession(ctx) {
     }
 }
 
+let lastProcessedUpdateId = null;
+
+bot.use(async (ctx, next) => {
+    if (lastProcessedUpdateId === ctx.update.update_id) {
+        console.log('Пропускаем дублирующееся обновление:', ctx.update.update_id);
+        return;
+    }
+    lastProcessedUpdateId = ctx.update.update_id;
+    await next();
+});
+
 function formatForTelegram(text) {
     return text
         .replace(/###/g, '▎ ')
@@ -148,6 +159,19 @@ async function logAction(chatId, action) {
     return true;
 }
 
+async function returnToMenu(ctx) {
+    ensureSession(ctx);
+    const message = await ctx.reply('Возвращаюсь в меню ...');
+    try {
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        await ctx.deleteMessage(message.message_id);
+        await showMenu(ctx);
+    } catch (error) {
+        console.error('Ошибка при возврате в меню:', error);
+    }
+}
+
+
 bot.command('start', async (ctx) => {
     ensureSession(ctx);
     ctx.session.state = 'menu';
@@ -155,13 +179,13 @@ bot.command('start', async (ctx) => {
     ctx.replyWithHTML(
         `👋 Привет, ${ctx.chat.first_name}! Я твой виртуальный помощник по обучению. Готов помочь тебе с любыми вопросами, связанными со школой! 📚`,
     );
-    await showMenu(ctx);
+    await returnToMenu(ctx);
 });
 
 bot.command('menu', async (ctx) => {
     ensureSession(ctx);
     ctx.session.state = 'menu';
-    await showMenu(ctx);
+    await returnToMenu(ctx);
 });
 
 bot.command('viewschedule', async (ctx) => {
@@ -209,7 +233,7 @@ bot.command('shownotes', async (ctx) => {
     ensureSession(ctx);
     await showNotes(ctx);
     ctx.session.state = 'menu';
-    await showMenu(ctx); // Возвращаемся в меню
+    await returnToMenu(ctx); // Возвращаемся в меню
 });
 
 bot.command('deletenote', async (ctx) => {
@@ -218,45 +242,43 @@ bot.command('deletenote', async (ctx) => {
     ctx.reply('Введите номер заметки для удаления:');
 });
 
-bot.command('homework', async (ctx) => {
-    ensureSession(ctx);
-    ctx.session.state = 'homework';
-    ctx.reply('Введите предмет и тему домашнего задания:');
-});
-
-bot.command('explain', async (ctx) => {
-    ensureSession(ctx);
-    ctx.session.state = 'explain';
-    ctx.reply('Введите тему или концепцию для объяснения:');
-});
-
-bot.command('findarticle', async (ctx) => {
-    ensureSession(ctx);
-    ctx.session.state = 'find_article';
-    ctx.reply('Введите тему для поиска статьи:');
-});
-
-bot.command('findvideo', async (ctx) => {
-    ensureSession(ctx);
-    ctx.session.state = 'find_video';
-    ctx.reply('Введите тему для поиска видеоурока:');
-});
+// bot.command('homework', async (ctx) => {
+//     ensureSession(ctx);
+//     ctx.session.state = 'homework';
+//     ctx.reply('Введите предмет и тему домашнего задания:');
+// });
+//
+// bot.command('explain', async (ctx) => {
+//     ensureSession(ctx);
+//     ctx.session.state = 'explain';
+//     ctx.reply('Введите тему или концепцию для объяснения:');
+// });
+//
+// bot.command('findarticle', async (ctx) => {
+//     ensureSession(ctx);
+//     ctx.session.state = 'find_article';
+//     ctx.reply('Введите тему для поиска статьи:');
+// });
+//
+// bot.command('findvideo', async (ctx) => {
+//     ensureSession(ctx);
+//     ctx.session.state = 'find_video';
+//     ctx.reply('Введите тему для поиска видеоурока:');
+// });
 
 bot.command('stats', async (ctx) => {
     ensureSession(ctx);
     await showStats(ctx);
     ctx.session.state = 'menu';
-    await showMenu(ctx); // Возвращаемся в меню
+    await returnToMenu(ctx); // Возвращаемся в меню
 });
 
 async function showMenu(ctx) {
     ensureSession(ctx);
     const keyboard = [
         ['Добавить расписание', 'Посмотреть расписание'],
-        ['Изменить расписание', 'Поговорить со мной'],
+        ['Изменить расписание', 'Статистика'],
         ['Добавить заметку', 'Показать заметки'],
-        ['Найти статью', 'Найти видеоурок'],
-        ['Статистика'],
     ];
     ctx.reply('Выбери, что ты хочешь сделать:', {
         reply_markup: { keyboard, resize_keyboard: true },
@@ -338,20 +360,10 @@ bot.on('text', async (ctx) => {
             const saved = await saveSchedule(ctx.chat.id, dayAddSubject, subjects, ctx);
             if (saved) {
                 ctx.reply(`Расписание на ${capitalizeDay(dayAddSubject)} успешно сохранено!`);
-                ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
-                    setTimeout(() => {
-                        ctx.deleteMessage(sentMessage.message_id);
-                        showMenu(ctx);
-                    }, 1500);
-                });
+                await returnToMenu(ctx);
             } else {
                 ctx.reply('Ошибка при сохранении расписания. Пожалуйста, обратитесь в тех. поддержку: @xrazycoolin');
-                ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
-                    setTimeout(() => {
-                        ctx.deleteMessage(sentMessage.message_id);
-                        showMenu(ctx);
-                    }, 1500);
-                });
+                await returnToMenu(ctx);
             }
             break;
         case 'view_day':
@@ -363,12 +375,7 @@ bot.on('text', async (ctx) => {
                 if (subjects.length > 0) {
                     const formatted = formatSchedule(subjects, viewDay);
                     ctx.replyWithHTML(formatted);
-                    ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
-                        setTimeout(() => {
-                            ctx.deleteMessage(sentMessage.message_id);
-                            showMenu(ctx);
-                        }, 1500);
-                    });
+                    await returnToMenu(ctx);
                 } else {
                     ctx.reply(`Расписание на ${capitalizeDay(viewDay)} еще не добавлено.`);
                 }
@@ -411,22 +418,12 @@ bot.on('text', async (ctx) => {
                                 subjectIndex + 1
                             } изменен на "${newSubjectName}".`,
                         );
-                        ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
-                            setTimeout(() => {
-                                ctx.deleteMessage(sentMessage.message_id);
-                                showMenu(ctx);
-                            }, 1500);
-                        });
+                        await returnToMenu(ctx);
                     } else {
                         ctx.reply(
                             'Ошибка при сохранении изменений. Пожалуйста, обратитесь в тех. поддержку: @xrazycoolin',
                         );
-                        ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
-                            setTimeout(() => {
-                                ctx.deleteMessage(sentMessage.message_id);
-                                showMenu(ctx);
-                            }, 1500);
-                        });
+                        await returnToMenu(ctx);
                     }
                 } else {
                     ctx.reply('Предмета с таким индексом нет.');
@@ -448,20 +445,10 @@ bot.on('text', async (ctx) => {
                 const saved = await saveSchedule(ctx.chat.id, dayAdd, schedule[dayAdd], ctx);
                 if (saved) {
                     ctx.reply(`Предмет "${subjectName}" добавлен на ${capitalizeDay(dayAdd)}.`);
-                    ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
-                        setTimeout(() => {
-                            ctx.deleteMessage(sentMessage.message_id);
-                            showMenu(ctx);
-                        }, 1500);
-                    });
+                    await returnToMenu(ctx);
                 } else {
                     ctx.reply('Ошибка при добавлении предмета. Пожалуйста, обратитесь в тех. поддержку: @xrazycoolin');
-                    ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
-                        setTimeout(() => {
-                            ctx.deleteMessage(sentMessage.message_id);
-                            showMenu(ctx);
-                        }, 1500);
-                    });
+                    await returnToMenu(ctx);
                 }
             } else {
                 ctx.reply('Неверный формат. Введите день недели и название предмета через запятую.');
@@ -479,22 +466,12 @@ bot.on('text', async (ctx) => {
                     const saved = await saveSchedule(ctx.chat.id, deleteDay, schedule[deleteDay], ctx);
                     if (saved) {
                         ctx.reply(`Предмет на ${capitalizeDay(deleteDay)}, №${deleteSubjectIndex + 1} удален.`);
-                        ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
-                            setTimeout(() => {
-                                ctx.deleteMessage(sentMessage.message_id);
-                                showMenu(ctx);
-                            }, 1500);
-                        });
+                        await returnToMenu(ctx);
                     } else {
                         ctx.reply(
                             'Ошибка при удалении предмета. Пожалуйста, обратитесь в тех. поддержку: @xrazycoolin',
                         );
-                        ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
-                            setTimeout(() => {
-                                ctx.deleteMessage(sentMessage.message_id);
-                                showMenu(ctx);
-                            }, 1500);
-                        });
+                        await returnToMenu(ctx);
                     }
                 } else {
                     ctx.reply('Предмета с таким индексом нет.');
@@ -507,12 +484,7 @@ bot.on('text', async (ctx) => {
         case 'add_note':
             await saveNote(ctx.chat.id, text);
             ctx.reply('Заметка добавлена.');
-            ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
-                setTimeout(() => {
-                    ctx.deleteMessage(sentMessage.message_id);
-                    showMenu(ctx);
-                }, 1500);
-            });
+            await returnToMenu(ctx);
             break;
         case 'delete_note':
             const noteIndex = parseInt(text, 10) - 1;
@@ -520,121 +492,116 @@ bot.on('text', async (ctx) => {
             if (notes[noteIndex]) {
                 await deleteNote(notes[noteIndex].id);
                 ctx.reply('Заметка удалена.');
-                ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
-                    setTimeout(() => {
-                        ctx.deleteMessage(sentMessage.message_id);
-                        showMenu(ctx);
-                    }, 1500);
-                });
+                await returnToMenu(ctx);
             } else {
                 ctx.reply('Нет заметки с таким номером.');
             }
             ctx.session.state = 'menu';
             break;
-        case 'homework':
-            try {
-                const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-                const response = await openai.chat.completions.create({
-                    model: 'gpt-4',
-                    messages: [{ role: 'user', content: `Сгенерируй домашнее задание по ${text}` }],
-                });
-                ctx.replyWithHTML(formatForTelegram(response.choices[0].message.content));
-                ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
-                    setTimeout(() => {
-                        ctx.deleteMessage(sentMessage.message_id);
-                        showMenu(ctx);
-                    }, 1500);
-                });
-            } catch (error) {
-                console.error('Ошибка при генерации домашнего задания:', error);
-                ctx.reply(
-                    'Ошибка при генерации домашнего задания. Пожалуйста, обратитесь в тех. поддержку: @xrazycoolin',
-                );
-                ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
-                    setTimeout(() => {
-                        ctx.deleteMessage(sentMessage.message_id);
-                        showMenu(ctx);
-                    }, 1500);
-                });
-            }
-            break;
-        case 'explain':
-            try {
-                const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-                const response = await openai.chat.completions.create({
-                    model: 'gpt-4',
-                    messages: [{ role: 'user', content: `Объясни ${text}` }],
-                });
-                ctx.replyWithHTML(formatForTelegram(response.choices[0].message.content));
-            } catch (error) {
-                console.error('Ошибка при объяснении концепции:', error);
-                ctx.reply('Ошибка при объяснении концепции. Пожалуйста, обратитесь в тех. поддержку: @xrazycoolin');
-            }
-            ctx.session.state = 'menu';
-            break;
-        case 'find_article':
-            try {
-                const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-                const response = await openai.chat.completions.create({
-                    model: 'gpt-4',
-                    messages: [{ role: 'user', content: `Найди статью по теме ${text}` }],
-                });
-                ctx.replyWithHTML(formatForTelegram(response.choices[0].message.content));
-                ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
-                    setTimeout(() => {
-                        ctx.deleteMessage(sentMessage.message_id);
-                        showMenu(ctx);
-                    }, 1500);
-                });
-            } catch (error) {
-                console.error('Ошибка при поиске статьи:', error);
-                ctx.reply('Ошибка при поиске статьи. Пожалуйста, обратитесь в тех. поддержку: @xrazycoolin');
-                ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
-                    setTimeout(() => {
-                        ctx.deleteMessage(sentMessage.message_id);
-                        showMenu(ctx);
-                    }, 1500);
-                });
-            }
-            break;
-        case 'find_video':
-            try {
-                const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-                const response = await openai.chat.completions.create({
-                    model: 'gpt-4',
-                    messages: [{ role: 'user', content: `Найди видеоурок по теме ${text}` }],
-                });
-                ctx.replyWithHTML(formatForTelegram(response.choices[0].message.content));
-            } catch (error) {
-                console.error('Ошибка при поиске видеоурока:', error);
-                ctx.reply('Ошибка при поиске видеоурока. Пожалуйста, обратитесь в тех. поддержку: @xrazycoolin');
-                ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
-                    setTimeout(() => {
-                        ctx.deleteMessage(sentMessage.message_id);
-                        showMenu(ctx);
-                    }, 1500);
-                });
-            }
-            break;
-        case 'dialog':
-            try {
-                const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-                const response = await openai.chat.completions.create({
-                    model: 'gpt-4',
-                    messages: [{ role: 'user', content: text }],
-                });
-                ctx.replyWithHTML(formatForTelegram(response.choices[0].message.content));
-            } catch (error) {
-                console.error('Ошибка при обработке запроса:', error);
-                ctx.reply('Ошибка при обработке запроса. Пожалуйста, обратитесь в тех. поддержку: @xrazycoolin');
-                ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
-                    setTimeout(() => {
-                        ctx.deleteMessage(sentMessage.message_id);
-                        showMenu(ctx);
-                    }, 1500);
-                });
-            }
-            break;
+        // case 'homework':
+        //     try {
+        //         const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+        //         const response = await openai.chat.completions.create({
+        //             model: 'gpt-4',
+        //             messages: [{ role: 'user', content: `Сгенерируй домашнее задание по ${text}` }],
+        //         });
+        //         ctx.replyWithHTML(formatForTelegram(response.choices[0].message.content));
+        //         ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
+        //             setTimeout(() => {
+        //                 ctx.deleteMessage(sentMessage.message_id);
+        //                 showMenu(ctx);
+        //             }, 1500);
+        //         });
+        //     } catch (error) {
+        //         console.error('Ошибка при генерации домашнего задания:', error);
+        //         ctx.reply(
+        //             'Ошибка при генерации домашнего задания. Пожалуйста, обратитесь в тех. поддержку: @xrazycoolin',
+        //         );
+        //         ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
+        //             setTimeout(() => {
+        //                 ctx.deleteMessage(sentMessage.message_id);
+        //                 showMenu(ctx);
+        //             }, 1500);
+        //         });
+        //     }
+        //     break;
+        // case 'explain':
+        //     try {
+        //         const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+        //         const response = await openai.chat.completions.create({
+        //             model: 'gpt-4',
+        //             messages: [{ role: 'user', content: `Объясни ${text}` }],
+        //         });
+        //         ctx.replyWithHTML(formatForTelegram(response.choices[0].message.content));
+        //     } catch (error) {
+        //         console.error('Ошибка при объяснении концепции:', error);
+        //         ctx.reply('Ошибка при объяснении концепции. Пожалуйста, обратитесь в тех. поддержку: @xrazycoolin');
+        //     }
+        //     ctx.session.state = 'menu';
+        //     break;
+        // case 'find_article':
+        //     try {
+        //         const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+        //         const response = await openai.chat.completions.create({
+        //             model: 'gpt-4',
+        //             messages: [{ role: 'user', content: `Найди статью по теме ${text}` }],
+        //         });
+        //         ctx.replyWithHTML(formatForTelegram(response.choices[0].message.content));
+        //         ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
+        //             setTimeout(() => {
+        //                 ctx.deleteMessage(sentMessage.message_id);
+        //                 showMenu(ctx);
+        //             }, 1500);
+        //         });
+        //     } catch (error) {
+        //         console.error('Ошибка при поиске статьи:', error);
+        //         ctx.reply('Ошибка при поиске статьи. Пожалуйста, обратитесь в тех. поддержку: @xrazycoolin');
+        //         ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
+        //             setTimeout(() => {
+        //                 ctx.deleteMessage(sentMessage.message_id);
+        //                 showMenu(ctx);
+        //             }, 1500);
+        //         });
+        //     }
+        //     break;
+        // case 'find_video':
+        //     try {
+        //         const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+        //         const response = await openai.chat.completions.create({
+        //             model: 'gpt-4',
+        //             messages: [{ role: 'user', content: `Найди видеоурок по теме ${text}` }],
+        //         });
+        //         ctx.replyWithHTML(formatForTelegram(response.choices[0].message.content));
+        //     } catch (error) {
+        //         console.error('Ошибка при поиске видеоурока:', error);
+        //         ctx.reply('Ошибка при поиске видеоурока. Пожалуйста, обратитесь в тех. поддержку: @xrazycoolin');
+        //         ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
+        //             setTimeout(() => {
+        //                 ctx.deleteMessage(sentMessage.message_id);
+        //                 showMenu(ctx);
+        //             }, 1500);
+        //         });
+        //     }
+        //     break;
+        // case 'dialog':
+        //     try {
+        //         const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+        //         const response = await openai.chat.completions.create({
+        //             model: 'gpt-4',
+        //             messages: [{ role: 'user', content: text }],
+        //         });
+        //         ctx.replyWithHTML(formatForTelegram(response.choices[0].message.content));
+        //     } catch (error) {
+        //         console.error('Ошибка при обработке запроса:', error);
+        //         ctx.reply('Ошибка при обработке запроса. Пожалуйста, обратитесь в тех. поддержку: @xrazycoolin');
+        //         ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
+        //             setTimeout(() => {
+        //                 ctx.deleteMessage(sentMessage.message_id);
+        //                 showMenu(ctx);
+        //             }, 1500);
+        //         });
+        //     }
+        //     break;
         default:
             if (text === 'Добавить расписание') {
                 ctx.session.state = 'add_schedule';
@@ -644,20 +611,11 @@ bot.on('text', async (ctx) => {
             } else if (text === 'Изменить расписание') {
                 ctx.session.state = 'edit_schedule';
                 await editSchedule(ctx);
-            } else if (text === 'Поговорить со мной') {
-                ctx.session.state = 'dialog';
-                ctx.reply('Напиши мне свой вопрос:');
             } else if (text === 'Добавить заметку') {
                 ctx.session.state = 'add_note';
                 ctx.reply('Введите текст заметки:');
             } else if (text === 'Показать заметки') {
                 await showNotes(ctx);
-            } else if (text === 'Найти статью') {
-                ctx.session.state = 'find_article';
-                ctx.reply('Введите тему для поиска статьи:');
-            } else if (text === 'Найти видеоурок') {
-                ctx.session.state = 'find_video';
-                ctx.reply('Введите тему для поиска видеоурока:');
             } else if (text === 'Статистика') {
                 await showStats(ctx);
             }
