@@ -2,7 +2,6 @@ require('dotenv').config();
 const { Telegraf, session } = require('telegraf');
 const OpenAI = require('openai');
 const { createClient } = require('@supabase/supabase-js');
-const cron = require('node-cron');
 const express = require('express');
 const bodyParser = require('body-parser');
 
@@ -17,38 +16,26 @@ bot.use(session());
 const app = express();
 app.use(bodyParser.json());
 
-module.exports = app;
-
-// Устанавливаем вебхук после инициализации бота
+// Вебхук
+bot.webhookReply = true;
 const webhookUrl = process.env.WEBHOOK_URL;
 if (webhookUrl) {
-    bot.webhookReply = true; // Важно для Vercel
-    bot.webhookCallback = bot.webhookCallback();
-    bot.webhookReply = true;
     bot.setWebhook(webhookUrl);
 } else {
-    console.error('WEBHOOK_URL is not set in environment variables.');
+    console.error('WEBHOOK_URL not set');
 }
 
 // Обработчик вебхуков
 app.post('/api/index', bot.webhookCallback());
 
-// Запускаем бота
-bot.launch()
-    .then(() => {
-        console.log('Бот инициализирован!');
-    })
-    .catch((error) => {
-        console.error('Ошибка инициализации бота:', error);
-    });
+// Запуск бота
+bot.launch();
 
-// Запускаем сервер
+// Запуск сервера
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-    console.log(`Сервер запущен на порту ${PORT}`);
+    console.log(`Server running on port ${PORT}`);
 });
-
-
 
 function ensureSession(ctx) {
     if (!ctx.session) {
