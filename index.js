@@ -13,38 +13,38 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY
 const bot = new Telegraf(process.env.TELEGRAM_TOKEN);
 bot.use(session());
 
-const webhookUrl = 'https://school-project-rpni.vercel.app/api/index';
-
-async function ensureWebhookIsSet(bot, webhookUrl) {
-    try {
-        const response = await bot.telegram.getWebhookInfo(); // Получаем информацию о вебхуке
-        if (!response || !response.result || !response.result.url) {
-            console.log('Вебхук не установлен или информация отсутствует. Устанавливаем новый...');
-            await bot.telegram.setWebhook(webhookUrl);
-        } else if (response.result.url !== webhookUrl) {
-            console.log('Текущий вебхук не соответствует требуемому URL. Обновляем...');
-            await bot.telegram.setWebhook(webhookUrl);
-        } else {
-            console.log('Вебхук уже установлен:', response.result.url);
-        }
-    } catch (error) {
-        console.error('Ошибка при проверке вебхука:', error);
-        // Если произошла ошибка, попробуйте установить вебхук заново
-        try {
-            console.log('Попытка установки нового вебхука...');
-            await bot.telegram.setWebhook(webhookUrl);
-        } catch (setWebhookError) {
-            console.error('Ошибка при установке вебхука:', setWebhookError);
-        }
-    }
-}
-
-if (webhookUrl) {
-    bot.telegram.webhookReply = true; // Важно для Vercel
-    ensureWebhookIsSet(bot, webhookUrl);
-} else {
-    console.error('WEBHOOK_URL is not set in environment variables.');
-}
+// const webhookUrl = 'https://school-project-rpni.vercel.app/api/index';
+//
+// async function ensureWebhookIsSet(bot, webhookUrl) {
+//     try {
+//         const response = await bot.telegram.getWebhookInfo(); // Получаем информацию о вебхуке
+//         if (!response || !response.result || !response.result.url) {
+//             console.log('Вебхук не установлен или информация отсутствует. Устанавливаем новый...');
+//             await bot.telegram.setWebhook(webhookUrl);
+//         } else if (response.result.url !== webhookUrl) {
+//             console.log('Текущий вебхук не соответствует требуемому URL. Обновляем...');
+//             await bot.telegram.setWebhook(webhookUrl);
+//         } else {
+//             console.log('Вебхук уже установлен:', response.result.url);
+//         }
+//     } catch (error) {
+//         console.error('Ошибка при проверке вебхука:', error);
+//         // Если произошла ошибка, попробуйте установить вебхук заново
+//         try {
+//             console.log('Попытка установки нового вебхука...');
+//             await bot.telegram.setWebhook(webhookUrl);
+//         } catch (setWebhookError) {
+//             console.error('Ошибка при установке вебхука:', setWebhookError);
+//         }
+//     }
+// }
+//
+// if (webhookUrl) {
+//     bot.telegram.webhookReply = true; // Важно для Vercel
+//     ensureWebhookIsSet(bot, webhookUrl);
+// } else {
+//     console.error('WEBHOOK_URL is not set in environment variables.');
+// }
 
 function ensureSession(ctx) {
     if (!ctx.session) {
