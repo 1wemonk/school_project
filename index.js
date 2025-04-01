@@ -200,7 +200,7 @@ bot.command('addschedule', async (ctx) => {
     await addSchedule(ctx);
 });
 
-bot.command('edit_schedule', async (ctx) => {
+bot.command('editschedule', async (ctx) => {
     ensureSession(ctx);
     ctx.session.state = 'edit_schedule';
     await editSchedule(ctx);
@@ -279,8 +279,10 @@ async function showMenu(ctx) {
     ensureSession(ctx);
     const keyboard = [
         ['Добавить расписание', 'Посмотреть расписание'],
-        ['Изменить расписание', 'Статистика'],
-        ['Добавить заметку', 'Показать заметки'],
+        ['Изменить предмет в расписании', "Добавить предмет в расписание"],
+        ["Показать заметки", "Удалить предмет из расписания"],
+        ['Добавить заметку', 'Удалить заметку'],
+        ["Статистика"]
     ];
     ctx.reply('Выбери, что ты хочешь сделать:', {
         reply_markup: { keyboard, resize_keyboard: true },
@@ -394,13 +396,7 @@ bot.on('text', async (ctx) => {
                 const subjects = latestSchedule[editDay] || [];
                 const formatted = formatSchedule(subjects, editDay);
                 ctx.replyWithHTML(formatted);
-                setTimeout(
-                    () =>
-                        ctx.reply(
-                            `Введите номер предмета и новое название предмета через запятую (например, 1, Физика):`,
-                        ),
-                    1000,
-                );
+                ctx.reply(`Введите номер предмета и новое название предмета через запятую (например, 1, Физика):`)
             } else {
                 ctx.reply('Выберите день из предложенных вариантов.');
             }
@@ -616,6 +612,21 @@ bot.on('text', async (ctx) => {
             } else if (text === 'Добавить заметку') {
                 ctx.session.state = 'add_note';
                 ctx.reply('Введите текст заметки:');
+            } else if (text === 'Удалить заметку') {
+                ctx.session.state = 'delete_note';
+                ctx.reply('Введите номер заметки:');
+            } else if (text === 'Изменить заметку') {
+                ctx.session.state = 'edit_note';
+                ctx.reply('Введите номер заметки:');
+            } else if (text === 'Добавить предмет в расписание') {
+                ctx.session.state = 'add_subject';
+                ctx.reply('Введите день недели и название предмета через запятую (Например, Понедельник, Математика):');
+            } else if (text === 'Удалить предмет из расписания') {
+                ctx.session.state = 'delete_subject';
+                ctx.reply('Введите день недели и номер предмета через запятую (Например, Понедельник, 1):');
+            } else if (text === 'Изменить предмет в расписании') {
+                ctx.session.state = 'edit_subject';
+                ctx.reply('Введите день недели и номер предмета через запятую (Например, Понедельник, Математика):');
             } else if (text === 'Показать заметки') {
                 await showNotes(ctx);
             } else if (text === 'Статистика') {
