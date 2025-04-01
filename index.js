@@ -725,28 +725,6 @@ bot.on('text', async (ctx) => {
 const app = express();
 app.use(bodyParser.json());
 
-async function ensureWebhookIsSet(bot, webhookUrl) {
-    try {
-        const { result } = await bot.telegram.getWebhookInfo();
-        if (result.url !== webhookUrl || !result.url) {
-            console.log('Устанавливаем новый вебхук...');
-            await bot.telegram.setWebhook(webhookUrl);
-        } else {
-            console.log('Вебхук уже установлен:', result.url);
-        }
-    } catch (error) {
-        console.error('Ошибка при проверке вебхука:', error);
-    }
-}
-
-const webhookUrl = 'https://school-project-rpni.vercel.app/api/index';
-if (webhookUrl) {
-    bot.telegram.webhookReply = true; // Важно для Vercel
-    ensureWebhookIsSet(bot, webhookUrl);
-} else {
-    console.error('WEBHOOK_URL is not set in environment variables.');
-}
-
 // Обработчик вебхуков
 app.post('/api/index', async (req, res) => {
     try {
