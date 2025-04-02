@@ -592,7 +592,7 @@ bot.on('text', async (ctx) => {
             try {
                 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
                 const response = await openai.chat.completions.create({
-                    model: 'gpt-3.5-turbo',
+                    model: 'gpt-4o-mini',
                     messages: [{ role: 'user', content: text }],
                 });
                 ctx.replyWithHTML(formatForTelegram(response.choices[0].message.content));
