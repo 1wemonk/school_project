@@ -757,3 +757,4 @@ bot.launch().then(() => {
 }).catch((error) => {
     console.error('Ошибка инициализации бота:', error);
 });
+//1
