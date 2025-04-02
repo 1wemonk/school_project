@@ -177,7 +177,7 @@ async function returnToMenu(ctx) {
 bot.command('dialog', async (ctx) => {
     ensureSession(ctx);
     ctx.session.state = 'dialog';
-    ctx.reply('Напиши свой вопрос');
+    ctx.reply('Введите свое сообщение:');
 });
 
 bot.command('start', async (ctx) => {
@@ -289,7 +289,7 @@ async function showMenu(ctx) {
         ['Изменить предмет в расписании', "Добавить предмет в расписание"],
         ["Показать заметки", "Удалить предмет из расписания"],
         ['Добавить заметку', 'Удалить заметку'],
-        ["Статистика"]
+        ["Поговорить со мной"]
     ];
     ctx.reply('Выбери, что ты хочешь сделать:', {
         reply_markup: { keyboard, resize_keyboard: true },
@@ -633,6 +633,9 @@ bot.on('text', async (ctx) => {
                 await showNotes(ctx);
             } else if (text === 'Статистика') {
                 await showStats(ctx);
+            } else if (text === 'Поговорить со мной') {
+                ctx.session.state = 'dialog';
+                ctx.reply('Введите свое сообщение:');
             }
     }
 });
