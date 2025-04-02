@@ -6,6 +6,7 @@ const cron = require('node-cron');
 const express = require('express');
 const bodyParser = require('body-parser');
 
+
 // Настройка Supabase
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
 
@@ -172,6 +173,12 @@ async function returnToMenu(ctx) {
     }
 }
 
+// Обработчик для начала диалога с ChatGPT
+bot.command('dialog', async (ctx) => {
+    ensureSession(ctx);
+    ctx.session.state = 'dialog';
+    ctx.reply('Напиши свой вопрос');
+});
 
 bot.command('start', async (ctx) => {
     ensureSession(ctx);
@@ -581,25 +588,20 @@ bot.on('text', async (ctx) => {
         //         });
         //     }
         //     break;
-        // case 'dialog':
-        //     try {
-        //         const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-        //         const response = await openai.chat.completions.create({
-        //             model: 'gpt-4',
-        //             messages: [{ role: 'user', content: text }],
-        //         });
-        //         ctx.replyWithHTML(formatForTelegram(response.choices[0].message.content));
-        //     } catch (error) {
-        //         console.error('Ошибка при обработке запроса:', error);
-        //         ctx.reply('Ошибка при обработке запроса. Пожалуйста, обратитесь в тех. поддержку: @xrazycoolin');
-        //         ctx.reply('Возвращаюсь в меню ...').then((sentMessage) => {
-        //             setTimeout(() => {
-        //                 ctx.deleteMessage(sentMessage.message_id);
-        //                 showMenu(ctx);
-        //             }, 1500);
-        //         });
-        //     }
-        //     break;
+        case 'dialog':
+            try {
+                const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+                const response = await openai.chat.completions.create({
+                    model: 'gpt-3.5-turbo',
+                    messages: [{ role: 'user', content: text }],
+                });
+                ctx.replyWithHTML(formatForTelegram(response.choices[0].message.content));
+            } catch (error) {
+                console.error('Ошибка при обработке запроса:', error);
+                ctx.reply('Ошибка при обработке запроса. Пожалуйста, обратитесь в тех. поддержку: @xrazycoolin');
+                await returnToMenu(ctx)
+            }
+            break;
         default:
             if (text === 'Добавить расписание') {
                 ctx.session.state = 'add_schedule';
